@@ -1,0 +1,147 @@
+# ============================================================================
+#  Latido — compose de PRODUCCIÓN para Coolify (VPS Hostinger).
+#  Coolify clona el repo y construye api/web desde sus Dockerfiles (no requiere
+#  registro). El reverse proxy + SSL los pone Coolify: en su UI asigna el
+#  dominio al servicio `web` (puerto 80). NO publiques 80/443 aquí (los usa el
+#  proxy de Coolify). Define todas las variables en la sección Environment de
+#  Coolify (ver .env.production.example).
+# ============================================================================
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    command: ["node", "src/server.js"]
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY}
+      WATERMARK_SALT: ${WATERMARK_SALT}
+      CONTENT_CONSENT_VERSION: ${CONTENT_CONSENT_VERSION}
+      LOGIN_MAX_FAILS: ${LOGIN_MAX_FAILS}
+      LOGIN_LOCK_SECONDS: ${LOGIN_LOCK_SECONDS}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX}
+      # S3 / MinIO
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${PUBLIC_URL}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET_MEDIA: ${S3_BUCKET_MEDIA}
+      S3_BUCKET_PUBLIC: ${S3_BUCKET_PUBLIC}
+      MEDIA_SIGNED_URL_TTL: ${MEDIA_SIGNED_URL_TTL}
+      # App
+      PUBLIC_URL: ${PUBLIC_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      DIAMOND_COP: ${DIAMOND_COP}
+      # LiveKit
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # KYC
+      KYC_PROVIDER: ${KYC_PROVIDER}
+      KYC_API_KEY: ${KYC_API_KEY}
+      KYC_WEBHOOK_SECRET: ${KYC_WEBHOOK_SECRET}
+      KYC_AUTO_APPROVE: ${KYC_AUTO_APPROVE}
+      KYC_FACE_MATCH_MIN: ${KYC_FACE_MATCH_MIN}
+      # Wompi
+      WOMPI_MODE: ${WOMPI_MODE}
+      WOMPI_PUBLIC_KEY: ${WOMPI_PUBLIC_KEY}
+      WOMPI_PRIVATE_KEY: ${WOMPI_PRIVATE_KEY}
+      WOMPI_INTEGRITY_SECRET: ${WOMPI_INTEGRITY_SECRET}
+      WOMPI_EVENTS_SECRET: ${WOMPI_EVENTS_SECRET}
+      WOMPI_CHECKOUT_URL: ${WOMPI_CHECKOUT_URL}
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
+
+  web:
+    build: ./nginx
+    restart: unless-stopped
+    # Coolify enruta el dominio HTTPS a este servicio (puerto 80). Asigna el
+    # FQDN en la UI de Coolify o define SERVICE_FQDN_WEB con tu dominio.
+    expose:
+      - "80"
+    environment:
+      SERVICE_FQDN_WEB: ${PUBLIC_URL}
+    depends_on:
+      - api
+
+  livekit:
+    image: livekit/livekit-server:v1.8
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "exec /livekit-server --config-body \"$$LIVEKIT_CONFIG_BODY\""]
+    environment:
+      # En producción (Linux) SÍ se usa UDP (mejor latencia). node_ip = IP pública del VPS.
+      LIVEKIT_CONFIG_BODY: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:

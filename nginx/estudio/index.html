@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Latido · Estudio de Creadora</title>
+  <link rel="stylesheet" href="estudio.css?v=1" />
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <div id="login">
+    <form class="login-card" id="loginForm">
+      <div class="logo">Latido Estudio</div>
+      <div class="sub">Panel de creadora · acceso web</div>
+      <label class="lbl" for="email">Correo</label>
+      <input class="field" id="email" type="email" placeholder="tucorreo@ejemplo.com" autocomplete="username" />
+      <label class="lbl" for="pass">Contraseña</label>
+      <input class="field" id="pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <input class="field hidden" id="totp" inputmode="numeric" maxlength="6" placeholder="Código 2FA" autocomplete="one-time-code" />
+      <div class="err" id="loginErr"></div>
+      <button class="btn btn-grad btn-block" id="loginBtn" type="submit">Ingresar</button>
+    </form>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="hidden">
+    <aside class="sidebar">
+      <div class="brand">Latido Estudio</div>
+      <nav id="nav">
+        <div class="nav-item on" data-nav="panel"><span class="ic">▦</span> Panel</div>
+        <div class="nav-item" data-nav="envivo"><span class="ic">🔴</span> En Vivo</div>
+        <div class="nav-item" data-nav="contenido"><span class="ic">🖼️</span> Contenido</div>
+        <div class="nav-item" data-nav="finanzas"><span class="ic">💰</span> Finanzas</div>
+        <div class="nav-item" data-nav="perfil"><span class="ic">👤</span> Perfil</div>
+      </nav>
+      <div class="spacer"></div>
+      <div class="live-pill" id="livePill" data-action="toggleLive"><span class="dot"></span><span id="livePillTxt">Desconectada</span></div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h2 id="pageTitle">Panel</h2>
+        <div class="who">
+          <span id="whoName">—</span>
+          <span class="avatar" id="whoAv">C</span>
+          <button class="btn btn-sm" id="logoutBtn">Salir</button>
+        </div>
+      </header>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" class="hidden" />
+  <input type="file" id="avatarInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+
+  <!-- ============ INVITACIÓN A SALA PRIVADA ============ -->
+  <div id="privInvite" class="hidden">
+    <div class="invite-card">
+      <div class="invite-emoji">🔒📞</div>
+      <div class="invite-title">Solicitud de sala privada</div>
+      <div class="invite-sub"><b id="inviteFan">Un fan</b> quiere una videollamada privada contigo.</div>
+      <div class="invite-rate"><span id="inviteRate">0</span> 💎 / min</div>
+      <div class="invite-actions">
+        <button class="btn btn-danger btn-block" data-action="privDecline">Rechazar</button>
+        <button class="btn btn-grad btn-block" data-action="privAccept">Aceptar llamada</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SALA PRIVADA (modelo) ============ -->
+  <div id="privOverlay" class="hidden">
+    <div class="priv-stage">
+      <!-- Escenario grande = la modelo (se ve a sí misma). PIP pequeño = el fan. -->
+      <video id="privFanVideo" autoplay playsinline muted></video>
+      <video id="privSelfVideo" autoplay playsinline></video>
+      <div id="privWaitFan" class="priv-wait">🎥 El fan aún no activa su cámara</div>
+      <div class="priv-top">
+        <span class="priv-badge">🔒 PRIVADO</span>
+        <b id="privFan">Fan</b>
+        <span class="muted"><span id="privRateM">0</span>💎/min</span>
+        <span id="privTimerM">⏱ 0:00</span>
+      </div>
+    </div>
+    <aside class="priv-side">
+      <div class="priv-controls">
+        <button class="btn btn-sm" data-action="privCamM" id="privCamM">📷 Cámara: on</button>
+        <button class="btn btn-sm" data-action="privMicM" id="privMicM">🎤 Micro: on</button>
+        <button class="btn btn-danger btn-sm" data-action="privEndM">Finalizar</button>
+      </div>
+      <div class="priv-block">
+        <div class="section-title">Regalos recibidos</div>
+        <div id="privGiftFeed" class="priv-gifts"><div class="muted" style="font-size:.82rem">Sin regalos aún.</div></div>
+      </div>
+      <div class="priv-block priv-chat">
+        <div class="section-title">Chat privado</div>
+        <div id="privChatFeed" class="priv-chat-feed"></div>
+        <div class="priv-chat-in">
+          <input id="privChatInput" placeholder="Escribe al fan…" />
+          <button class="btn btn-grad btn-sm" data-action="privSendM">➤</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="livekit-client.umd.min.js?v=1"></script>
+  <script src="estudio.js?v=1"></script>
+</body>
+</html>

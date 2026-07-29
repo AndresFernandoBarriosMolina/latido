@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Latido · Consola de Administración</title>
+  <link rel="stylesheet" href="admin.css?v=1" />
+</head>
+<body>
+
+  <!-- ============ LOGIN ============ -->
+  <div id="login">
+    <form class="login-card" id="loginForm">
+      <div class="logo">Latido · Admin</div>
+      <div class="sub">Consola de administración y moderación</div>
+      <label class="lbl" for="email">Correo</label>
+      <input class="field" id="email" type="email" placeholder="admin@latido.co" autocomplete="username" />
+      <label class="lbl" for="pass">Contraseña</label>
+      <input class="field" id="pass" type="password" placeholder="••••••••" autocomplete="current-password" />
+      <input class="field hidden" id="totp" inputmode="numeric" maxlength="6" placeholder="Código 2FA" autocomplete="one-time-code" />
+      <div class="err" id="loginErr"></div>
+      <button class="btn btn-primary btn-block" id="loginBtn" type="submit">Ingresar</button>
+    </form>
+  </div>
+
+  <!-- ============ APP ============ -->
+  <div id="app" class="hidden">
+    <aside class="sidebar">
+      <div class="brand">Latido <span>Admin</span></div>
+      <nav id="nav">
+        <div class="nav-item on" data-nav="dashboard"><span class="ic">▦</span> Dashboard</div>
+        <div class="nav-item" data-nav="finanzas"><span class="ic">💳</span> Finanzas</div>
+        <div class="nav-item" data-nav="usuarios"><span class="ic">👥</span> Usuarios</div>
+        <div class="nav-item" data-nav="kyc"><span class="ic">🪪</span> KYC</div>
+        <div class="nav-item" data-nav="reportes"><span class="ic">🚩</span> Reportes</div>
+        <div class="nav-item" data-nav="moderacion"><span class="ic">🛡️</span> Moderación</div>
+        <div class="nav-item" data-nav="config"><span class="ic">⚙️</span> Configuración</div>
+        <div class="nav-item" data-nav="auditoria"><span class="ic">📜</span> Auditoría</div>
+      </nav>
+      <div class="spacer"></div>
+      <div class="who-side"><span id="whoName">—</span><span id="whoRole" class="role"></span></div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <h2 id="pageTitle">Dashboard</h2>
+        <button class="btn btn-sm" id="logoutBtn">Salir</button>
+      </header>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <script src="admin.js?v=1"></script>
+</body>
+</html>

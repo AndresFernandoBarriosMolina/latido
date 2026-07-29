@@ -1,0 +1,119 @@
+# ============================================================================
+#  Latido — stack reconstruido en C: (2026-07-28) tras corrupción del árbol en D:.
+#  name: latido  →  reutiliza red y volúmenes EXISTENTES (latido_db_data, etc.)
+#  Los datos (BD/MinIO/Redis) viven en volúmenes de Docker (WSL), no en disco.
+# ============================================================================
+name: latido
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: latido-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d   # solo corre en instalación nueva (volumen vacío)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [latido-net]
+
+  redis:
+    image: redis:7-alpine
+    container_name: latido-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [latido-net]
+
+  minio:
+    image: minio/minio:latest
+    container_name: latido-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [latido-net]
+
+  api:
+    image: latido/api:latest
+    build: ./api
+    container_name: latido-api
+    restart: unless-stopped
+    env_file: .env
+    command: ["node", "src/server.js"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
+    networks: [latido-net]
+
+  web:
+    image: latido/web:latest
+    build: ./nginx
+    container_name: latido-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on: [api]
+    networks: [latido-net]
+
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: latido-livekit
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "exec /livekit-server --config-body \"$$LIVEKIT_CONFIG_BODY\""]
+    environment:
+      LIVEKIT_CONFIG_BODY: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          use_external_ip: false
+          node_ip: 127.0.0.1
+        keys:
+          latido_lk: ${LIVEKIT_API_SECRET}
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+    networks: [latido-net]
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: latido-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on: [db]
+    networks: [latido-net]
+
+volumes:
+  db_data:
+  redis_data:
+  minio_data:
+
+networks:
+  latido-net:

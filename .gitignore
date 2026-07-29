@@ -1,0 +1,20 @@
+# Dependencias (se restauran con npm ci desde package-lock)
+node_modules/
+api/node_modules/
+
+# Logs y temporales
+*.log
+npm-debug.log*
+
+# Basura de SO / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# .env con secretos: NO se versiona (se va a un remoto git para Coolify).
+# Los secretos se configuran en la UI de Coolify (ver .env.production.example).
+# Respaldo completo con secretos: el archivo .env sigue en disco + está en el
+# bundle offline latido-backup-20260729.bundle.
+.env
+.env.local
