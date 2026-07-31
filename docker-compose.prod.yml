@@ -159,7 +159,7 @@ services:
       - api
 
   livekit:
-    image: livekit/livekit-server:v1.8
+    image: livekit/livekit-server:v1.13.5
     restart: unless-stopped
     entrypoint: ["sh", "-c", "exec /livekit-server --config-body \"$$LIVEKIT_CONFIG_BODY\""]
     environment:
