@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
+import { hashPassword, verifyPassword } from '../services/password.service.js';
 import { query, withTx } from '../config/db.js';
 import { authenticate } from '../middleware/auth.js';
 import { strictLimiter } from '../middleware/security.js';
@@ -85,10 +85,10 @@ router.post('/me/password', strictLimiter, async (req, res, next) => {
       [req.user.id]
     );
     if (!rows[0]) return res.status(400).json({ error: 'no_password_auth' });
-    if (!(await argonVerify(rows[0].password_hash, currentPassword)))
+    if (!(await verifyPassword(rows[0].password_hash, currentPassword)))
       return res.status(401).json({ error: 'bad_credentials' });
 
-    const newHash = await argonHash(newPassword);
+    const newHash = await hashPassword(newPassword);
     await withTx(async (c) => {
       await c.query(`UPDATE auth_identities SET password_hash=$1 WHERE id=$2`, [newHash, rows[0].id]);
       await c.query(`UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, [req.user.id]);
@@ -234,7 +234,7 @@ router.post('/me/2fa/disable', strictLimiter, async (req, res, next) => {
     const auth = (await query(
       `SELECT password_hash FROM auth_identities WHERE user_id=$1 AND provider='password'`, [req.user.id]
     )).rows[0];
-    if (!auth || !(await argonVerify(auth.password_hash, password)))
+    if (!auth || !(await verifyPassword(auth.password_hash, password)))
       return res.status(401).json({ error: 'bad_credentials' });
     const u = (await query(`SELECT totp_secret_enc, totp_enabled FROM users WHERE id=$1`, [req.user.id])).rows[0];
     if (!u?.totp_enabled) return res.status(400).json({ error: 'not_enabled' });

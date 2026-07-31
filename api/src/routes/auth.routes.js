@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
+import { hashPassword, verifyPassword } from '../services/password.service.js';
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
@@ -48,7 +48,7 @@ router.post('/register', strictLimiter, async (req, res) => {
          VALUES ('user','active',$1,$2,$3,true,now(),now(),'1.0') RETURNING id, role`,
         [d.email || null, d.phone || null, d.birthdate]
       )).rows[0];
-      const hash = await argonHash(d.password);
+      const hash = await hashPassword(d.password);
       await c.query(`INSERT INTO auth_identities (user_id,provider,password_hash) VALUES ($1,'password',$2)`, [u.id, hash]);
       await c.query(`INSERT INTO profiles (user_id,display_name) VALUES ($1,$2)`, [u.id, d.displayName]);
       await c.query(`INSERT INTO wallets (user_id) VALUES ($1)`, [u.id]);
@@ -90,11 +90,8 @@ router.post('/login', strictLimiter, async (req, res) => {
     [identifier]
   );
   const rec = rows[0];
-  // argonVerify lanza si el hash es NULL/malformado → capturar para NO tumbar el proceso.
-  let pwOk = false;
-  if (rec && rec.password_hash) {
-    try { pwOk = await argonVerify(rec.password_hash, password); } catch { pwOk = false; }
-  }
+  // verifyPassword nunca lanza (captura internamente) → no tumba el proceso.
+  const pwOk = rec ? await verifyPassword(rec.password_hash, password) : false;
   if (!rec || !pwOk) {
     await recordLoginFail(identifier, req.ip);
     return res.status(401).json({ error: 'bad_credentials' });
