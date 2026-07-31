@@ -16,7 +16,6 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -34,6 +33,32 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Inicializa el esquema en la BD (una vez). Coolify no monta ./db/init, así que
+  # cargamos el esquema+seed desde el repo público. Idempotente: solo si falta.
+  db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD}
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache curl >/dev/null 2>&1 || true
+        EXIST=$$(psql -h db -U "$$DB_USER" -d "$$DB_NAME" -tAc "SELECT to_regclass('public.users')" 2>/dev/null)
+        if [ "$$EXIST" = "users" ]; then
+          echo "[db-init] esquema ya presente, omitido"
+        else
+          echo "[db-init] cargando esquema + seed desde el repo..."
+          curl -fsSL https://raw.githubusercontent.com/AndresFernandoBarriosMolina/latido/main/db/init/001_schema.sql | psql -h db -U "$$DB_USER" -d "$$DB_NAME" -q
+          curl -fsSL https://raw.githubusercontent.com/AndresFernandoBarriosMolina/latido/main/db/init/002_seed.sql | psql -h db -U "$$DB_USER" -d "$$DB_NAME" -q
+          echo "[db-init] listo"
+        fi
 
   minio:
     image: minio/minio:latest
@@ -109,6 +134,7 @@ services:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio: { condition: service_started }
+      db-init: { condition: service_completed_successfully }
 
   web:
     build: ./nginx
