@@ -63,7 +63,7 @@ services:
         fi
         if [ -n "$$ADMIN_EMAIL" ] && [ -n "$$ADMIN_PASSWORD_HASH_B64" ]; then
           HASH=$$(printf '%s' "$$ADMIN_PASSWORD_HASH_B64" | base64 -d)
-          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -v email="$$ADMIN_EMAIL" -v hash="$$HASH" -c "INSERT INTO users (role,status,email,email_verified,age_verified,age_verified_at,data_consent_at,tos_version) VALUES ('admin','active', :'email', true, true, now(), now(), '1.0') ON CONFLICT (email) DO UPDATE SET role='admin', status='active'; DELETE FROM auth_identities WHERE provider='password' AND user_id=(SELECT id FROM users WHERE email=:'email'); INSERT INTO auth_identities (user_id, provider, password_hash) SELECT id,'password', :'hash' FROM users WHERE email=:'email';"
+          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -c "INSERT INTO users (role,status,email,email_verified,age_verified,age_verified_at,data_consent_at,tos_version) VALUES ('admin','active','$$ADMIN_EMAIL',true,true,now(),now(),'1.0') ON CONFLICT (email) DO UPDATE SET role='admin',status='active'; DELETE FROM auth_identities WHERE provider='password' AND user_id=(SELECT id FROM users WHERE email='$$ADMIN_EMAIL'); INSERT INTO auth_identities (user_id,provider,password_hash) SELECT id,'password','$$HASH' FROM users WHERE email='$$ADMIN_EMAIL';"
           echo "[db-init] admin asegurado: $$ADMIN_EMAIL"
         fi
 
