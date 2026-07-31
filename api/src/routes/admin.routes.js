@@ -134,6 +134,37 @@ router.patch('/users/:id/role', requireAdmin, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Crédito MANUAL de diamantes a la billetera (soporte, cortesías, pruebas).
+// Queda en wallet_ledger (kind='adjustment') y en audit_log.
+const creditSchema = z.object({
+  diamonds: z.number().int().min(1).max(10000000),
+  memo: z.string().max(200).optional(),
+});
+router.post('/users/:id/credit', requireAdmin, async (req, res, next) => {
+  try {
+    const { diamonds, memo } = creditSchema.parse(req.body);
+    const uid = req.params.id;
+    const exists = (await query(`SELECT 1 FROM users WHERE id=$1`, [uid])).rows[0];
+    if (!exists) return res.status(404).json({ error: 'user_not_found' });
+    const bal = await withTx(async (c) => {
+      const w = (await c.query(
+        `INSERT INTO wallets (user_id, diamonds) VALUES ($1,$2)
+         ON CONFLICT (user_id) DO UPDATE SET diamonds = wallets.diamonds + $2, updated_at=now()
+         RETURNING diamonds`, [uid, diamonds])).rows[0];
+      await c.query(
+        `INSERT INTO wallet_ledger (user_id, kind, diamonds_delta, balance_diamonds, ref_type, memo)
+         VALUES ($1,'adjustment',$2,$3,'admin_credit',$4)`,
+        [uid, diamonds, w.diamonds, memo || `Crédito manual +${diamonds} 💎`]);
+      await c.query(
+        `INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta)
+         VALUES ($1,'wallet.credit','users',$2,$3,$4)`,
+        [req.user.id, uid, req.ip, JSON.stringify({ diamonds, memo: memo || null })]);
+      return w.diamonds;
+    });
+    res.json({ ok: true, diamonds: Number(bal) });
+  } catch (e) { if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' }); next(e); }
+});
+
 // Enviar notificación a usuario
 router.post('/users/:id/notify', requireStaff, async (req, res, next) => {
   try {
