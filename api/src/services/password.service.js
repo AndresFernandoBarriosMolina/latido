@@ -24,12 +24,8 @@ export async function verifyPassword(stored, password) {
       const dk = await scryptAsync(password, salt, expected.length, { N, r, p });
       return expected.length === dk.length && crypto.timingSafeEqual(expected, dk);
     }
-    // Compatibilidad: hashes antiguos argon2 (solo entorno local dev; en
-    // producción la BD es nueva y no tiene cuentas argon).
-    if (stored.startsWith('$argon2')) {
-      const { verify } = await import('@node-rs/argon2');
-      return await verify(stored, password);
-    }
+    // Hashes que NO son scrypt (p.ej. argon2 viejos) → false. NO llamamos al
+    // binario nativo argon2 porque se CUELGA en la CPU del VPS de producción.
     return false;
   } catch { return false; }
 }
