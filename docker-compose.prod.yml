@@ -46,6 +46,8 @@ services:
       PGPASSWORD: ${DB_PASSWORD}
       DB_USER: ${DB_USER}
       DB_NAME: ${DB_NAME}
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD_HASH_B64: "${ADMIN_PASSWORD_HASH_B64:-}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -57,7 +59,12 @@ services:
           echo "[db-init] cargando esquema + seed desde el repo..."
           curl -fsSL https://raw.githubusercontent.com/AndresFernandoBarriosMolina/latido/main/db/init/001_schema.sql | psql -h db -U "$$DB_USER" -d "$$DB_NAME" -q
           curl -fsSL https://raw.githubusercontent.com/AndresFernandoBarriosMolina/latido/main/db/init/002_seed.sql | psql -h db -U "$$DB_USER" -d "$$DB_NAME" -q
-          echo "[db-init] listo"
+          echo "[db-init] esquema listo"
+        fi
+        if [ -n "$$ADMIN_EMAIL" ] && [ -n "$$ADMIN_PASSWORD_HASH_B64" ]; then
+          HASH=$$(printf '%s' "$$ADMIN_PASSWORD_HASH_B64" | base64 -d)
+          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -v email="$$ADMIN_EMAIL" -v hash="$$HASH" -c "INSERT INTO users (role,status,email,email_verified,age_verified,age_verified_at,data_consent_at,tos_version) VALUES ('admin','active', :'email', true, true, now(), now(), '1.0') ON CONFLICT (email) DO UPDATE SET role='admin', status='active'; DELETE FROM auth_identities WHERE provider='password' AND user_id=(SELECT id FROM users WHERE email=:'email'); INSERT INTO auth_identities (user_id, provider, password_hash) SELECT id,'password', :'hash' FROM users WHERE email=:'email';"
+          echo "[db-init] admin asegurado: $$ADMIN_EMAIL"
         fi
 
   minio:
