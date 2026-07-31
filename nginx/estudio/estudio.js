@@ -84,8 +84,10 @@
   function navigate(view) {
     document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('on', n.dataset.nav === view));
     $('pageTitle').textContent = TITLES[view] || 'Estudio';
+    const app = document.getElementById('app'); if (app) app.classList.remove('nav-open');   // cierra el menú móvil al navegar
     (RENDER[view] || (() => {}))();
   }
+  function toggleNav() { const app = document.getElementById('app'); if (app) app.classList.toggle('nav-open'); }
 
   /* ---------- Panel ---------- */
   RENDER.panel = async function () {
@@ -513,7 +515,7 @@
 
   /* ---------- Acciones ---------- */
   const ACT = {
-    go: (a) => navigate(a), goLiveToggle, toggleLive, liveSendChat,
+    go: (a) => navigate(a), goLiveToggle, toggleLive, liveSendChat, toggleNav,
     pickFile, pickFileAlbum, pickShowcase, pickAvatar, newAlbum, openAlbum: (a) => openAlbum(a), albumVis, delAlbum,
     toggleItem: (a) => toggleItem(a), toggleVis: (a) => toggleVis(a), unshowcase: (a) => unshowcase(a), delItem: (a) => delItem(a),
     saveProfile, saveCreator, addBlock, removeBlock: (a) => removeBlock(a), saveBlocked,
