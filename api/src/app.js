@@ -9,7 +9,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   applySecurity(app);
 
-  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now(), build: 'scrypt-b1' }));
   app.use('/', apiRoutes);
 
   // Manejador de errores central
