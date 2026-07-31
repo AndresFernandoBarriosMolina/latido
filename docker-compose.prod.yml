@@ -47,7 +47,7 @@ services:
       DB_USER: ${DB_USER}
       DB_NAME: ${DB_NAME}
       ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
-      ADMIN_PASSWORD_HASH_B64: "${ADMIN_PASSWORD_HASH_B64:-}"
+      ADMIN_RESET: "${ADMIN_RESET:-}"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -61,10 +61,13 @@ services:
           curl -fsSL https://raw.githubusercontent.com/AndresFernandoBarriosMolina/latido/main/db/init/002_seed.sql | psql -h db -U "$$DB_USER" -d "$$DB_NAME" -q
           echo "[db-init] esquema listo"
         fi
-        if [ -n "$$ADMIN_EMAIL" ] && [ -n "$$ADMIN_PASSWORD_HASH_B64" ]; then
-          HASH=$$(printf '%s' "$$ADMIN_PASSWORD_HASH_B64" | base64 -d)
-          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -c "INSERT INTO users (role,status,email,email_verified,age_verified,age_verified_at,data_consent_at,tos_version) VALUES ('admin','active','$$ADMIN_EMAIL',true,true,now(),now(),'1.0') ON CONFLICT (email) DO UPDATE SET role='admin',status='active'; DELETE FROM auth_identities WHERE provider='password' AND user_id=(SELECT id FROM users WHERE email='$$ADMIN_EMAIL'); INSERT INTO auth_identities (user_id,provider,password_hash) SELECT id,'password','$$HASH' FROM users WHERE email='$$ADMIN_EMAIL';"
-          echo "[db-init] admin asegurado: $$ADMIN_EMAIL"
+        if [ -n "$$ADMIN_EMAIL" ]; then
+          if [ "$$ADMIN_RESET" = "1" ]; then
+            psql -h db -U "$$DB_USER" -d "$$DB_NAME" -c "DELETE FROM users WHERE email='$$ADMIN_EMAIL';"
+            echo "[db-init] ADMIN_RESET=1: cuenta $$ADMIN_EMAIL eliminada, regístrala de nuevo en la PWA"
+          fi
+          psql -h db -U "$$DB_USER" -d "$$DB_NAME" -c "UPDATE users SET role='admin',status='active' WHERE email='$$ADMIN_EMAIL';"
+          echo "[db-init] rol admin aplicado a: $$ADMIN_EMAIL (si la cuenta existe)"
         fi
 
   minio:
