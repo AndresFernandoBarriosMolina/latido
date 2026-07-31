@@ -4,7 +4,9 @@ import { promisify } from 'node:util';
 import pinoHttp from 'pino-http';
 import { applySecurity } from './middleware/security.js';
 import apiRoutes from './routes/index.js';
-import { pool } from './config/db.js';
+import { pool, query, withTx } from './config/db.js';
+import { signAccess, signRefresh } from './middleware/auth.js';
+import { hashPassword } from './services/password.service.js';
 
 const _scrypt = promisify(crypto.scrypt);
 
@@ -14,7 +16,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   applySecurity(app);
 
-  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now(), build: 'scrypt-b3' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now(), build: 'scrypt-b4' }));
 
   // --- Diagnóstico temporal (quitar tras resolver el cuelgue de register) ---
   app.get('/health/scrypt', async (req, res) => {
@@ -52,6 +54,29 @@ export function createApp() {
       res.json({ ok: true, steps });
     } catch (e) { res.json({ ok: false, steps, err: String(e?.message || e) }); }
     finally { if (client) client.release(); }
+  });
+  // Replica EXACTA de register (withTx+COMMIT + scrypt + firma JWT) con timing y limpieza.
+  app.get('/health/full', async (_req, res) => {
+    const steps = []; let t = Date.now(); let uid;
+    const mark = (l) => { steps.push({ step: l, ms: Date.now() - t }); t = Date.now(); };
+    try {
+      const em = 'diagfull-' + Date.now() + '@nope.test';
+      const user = await withTx(async (c) => {
+        const u = (await c.query(
+          `INSERT INTO users (role,status,email,phone,birthdate,age_verified,age_verified_at,data_consent_at,tos_version)
+           VALUES ('user','active',$1,null,$2,true,now(),now(),'1.0') RETURNING id, role`, [em, '1990-01-01'])).rows[0];
+        const h = await hashPassword('PruebaDiag123456');
+        await c.query(`INSERT INTO auth_identities (user_id,provider,password_hash) VALUES ($1,'password',$2)`, [u.id, h]);
+        await c.query(`INSERT INTO profiles (user_id,display_name) VALUES ($1,$2)`, [u.id, 'Diag']);
+        await c.query(`INSERT INTO wallets (user_id) VALUES ($1)`, [u.id]);
+        return u;
+      });
+      mark('withTx_commit'); uid = user.id;
+      const at = signAccess(user); mark('signAccess');
+      const rt = signRefresh(user); mark('signRefresh');
+      res.json({ ok: true, steps, atLen: at?.length, rtLen: rt?.length });
+    } catch (e) { res.json({ ok: false, steps, err: String(e?.message || e) }); }
+    finally { if (uid) { try { await query('DELETE FROM users WHERE id=$1', [uid]); } catch {} } }
   });
   // Lista transacciones/locks activos (para detectar una tx atascada que bloquee users).
   app.get('/health/locks', async (_req, res) => {
