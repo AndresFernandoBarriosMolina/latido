@@ -179,6 +179,9 @@ th{color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;
   .detail-grid{grid-template-columns:1fr;gap:8px}   /* clave:valor apilados */
   .live-stage{grid-template-columns:1fr}            /* video + chat apilados */
   .media-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  /* Sala privada de la modelo: apilar video arriba y controles/chat abajo */
+  #privOverlay{flex-direction:column}
+  .priv-side{width:100%;max-width:none;max-height:48vh;border-left:0;border-top:1px solid var(--border)}
 }
 @media (max-width:420px){
   .media-grid{grid-template-columns:repeat(2,1fr)}
