@@ -169,7 +169,12 @@ services:
         rtc:
           tcp_port: 7881
           udp_port: 7882
-          use_external_ip: true
+          # IP pública EXPLÍCITA del VPS: evita la autodetección por STIN/STUN
+          # (que si el firewall bloquea el UDP saliente detecta la IP interna de
+          # Docker 172.x → candidatos ICE inalcanzables → el medio se cae y
+          # reconecta en bucle, que es el "entrecortado" observado).
+          node_ip: 31.97.100.240
+          use_external_ip: false
         keys:
           ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
     ports:
