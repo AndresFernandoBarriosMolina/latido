@@ -37,6 +37,12 @@ router.post('/register', strictLimiter, async (req, res) => {
   const d = parsed.data;
   if (!isAdult(d.birthdate)) return res.status(403).json({ error: 'underage' });
 
+  // Bootstrap de admin: si el correo coincide con ADMIN_BOOTSTRAP_EMAIL, la
+  // cuenta se crea ya con rol 'admin' (hash scrypt de la propia app). Mecanismo
+  // de arranque de producción; quitar la env tras crear el admin.
+  const bootEmail = (process.env.ADMIN_BOOTSTRAP_EMAIL || '').trim().toLowerCase();
+  const role = bootEmail && d.email && d.email.toLowerCase() === bootEmail ? 'admin' : 'user';
+
   try {
     const user = await withTx(async (c) => {
       // status='active': la verificación de email/OTP es una fase posterior aún
@@ -45,8 +51,8 @@ router.post('/register', strictLimiter, async (req, res) => {
       // crea usuarios activos, por consistencia se hace igual aquí.
       const u = (await c.query(
         `INSERT INTO users (role,status,email,phone,birthdate,age_verified,age_verified_at,data_consent_at,tos_version)
-         VALUES ('user','active',$1,$2,$3,true,now(),now(),'1.0') RETURNING id, role`,
-        [d.email || null, d.phone || null, d.birthdate]
+         VALUES ($1,'active',$2,$3,$4,true,now(),now(),'1.0') RETURNING id, role`,
+        [role, d.email || null, d.phone || null, d.birthdate]
       )).rows[0];
       const hash = await hashPassword(d.password);
       await c.query(`INSERT INTO auth_identities (user_id,provider,password_hash) VALUES ($1,'password',$2)`, [u.id, hash]);
