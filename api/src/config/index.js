@@ -11,8 +11,12 @@ export const config = {
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET,
     refreshSecret: process.env.JWT_REFRESH_SECRET,
-    accessTtl: Number(process.env.JWT_ACCESS_TTL || 900),
-    refreshTtl: Number(process.env.JWT_REFRESH_TTL || 2592000),
+    // OJO: Number(x) || def, NO Number(x || def). Si la env trae un valor no
+    // numérico ("15m", "900s"), Number(x||def) daría NaN y jwt.sign LANZA
+    // ("expiresIn should be a number..."), colgando register/login (throw en
+    // handler async no capturado). Con Number(x)||def, NaN cae al default.
+    accessTtl: Number(process.env.JWT_ACCESS_TTL) || 900,
+    refreshTtl: Number(process.env.JWT_REFRESH_TTL) || 2592000,
   },
 
   google: {

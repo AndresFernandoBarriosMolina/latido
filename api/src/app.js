@@ -16,7 +16,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   applySecurity(app);
 
-  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now(), build: 'scrypt-b4' }));
+  app.get('/health', (_req, res) => res.json({ ok: true, ts: Date.now(), build: 'scrypt-b5' }));
 
   // --- Diagnóstico temporal (quitar tras resolver el cuelgue de register) ---
   app.get('/health/scrypt', async (req, res) => {
