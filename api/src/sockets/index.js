@@ -73,7 +73,10 @@ export function initSockets(httpServer) {
          duration_sec=EXTRACT(EPOCH FROM (now()-started_at))::int
        WHERE id=$1 AND status='active'`, [callId]
     );
-    if (s) io.to(`user:${s.modelId}`).to(`user:${s.viewerId}`).emit('private:ended', { callId, reason });
+    if (s) {
+      await presence.set(s.modelId, 'online');   // la modelo vuelve a estar disponible
+      io.to(`user:${s.modelId}`).to(`user:${s.viewerId}`).emit('private:ended', { callId, reason });
+    }
   }
   async function startPrivateBilling(callId, modelId, viewerId, pricePerMin) {
     const charge = async () => {
@@ -263,6 +266,13 @@ export function initSockets(httpServer) {
         roomToken({ identity: viewerId, room, canPublish: true }),
       ]);
       io.to(`user:${viewerId}`).emit('private:accepted', { callId, url: config.livekit.url, token: viewerToken, room, price });
+      // La modelo ABANDONA el show abierto y pasa a estado "privado": sale de
+      // "en vivo" (fuera de descubrimiento) y se avisa a los espectadores de la
+      // sala pública para que salgan (el que pidió el privado está protegido en
+      // cliente porque ya recibió 'private:accepted' antes que este evento).
+      await query(`UPDATE model_profiles SET is_live=false WHERE user_id=$1`, [uid]);
+      await presence.set(uid, 'in_call');
+      io.to(`live:${uid}`).emit('live:ended', { reason: 'model_private' });
       await startPrivateBilling(callId, uid, viewerId, price);
       ack?.({ ok: true, url: config.livekit.url, token: modelToken, room });
     });

@@ -140,12 +140,24 @@
     if (pill) pill.classList.toggle('on', live); if (txt) txt.textContent = live ? 'En vivo' : 'Desconectada';
   }
   function updateViewerCount() { /* actualizado por evento socket live:viewers */ }
+  // Sala LiveKit para PUBLICAR: simulcast + captura 540p + tope de bitrate.
+  // Reduce el "entrecortado": permite enviar una capa más baja a espectadores
+  // con red débil (adaptiveStream la elige) y limita el uplink de la creadora.
+  function lkPubRoom() {
+    const P = LivekitClient.VideoPresets;
+    return new LivekitClient.Room({
+      adaptiveStream: true, dynacast: true,
+      videoCaptureDefaults: { resolution: P.h540.resolution },
+      publishDefaults: { simulcast: true, videoSimulcastLayers: [P.h180, P.h360], videoEncoding: P.h540.encoding, dtx: true, red: true },
+    });
+  }
+
   async function goLiveToggle() {
     if (lkRoom) { await stopLive(); return; }
     if (!window.LivekitClient) { toast('El módulo de video no cargó'); return; }
     try {
       const { url, token } = await api('/live/broadcast', { method: 'POST' });
-      lkRoom = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+      lkRoom = lkPubRoom();
       lkRoom.on(LivekitClient.RoomEvent.ParticipantConnected, updateViewerCount);
       lkRoom.on(LivekitClient.RoomEvent.Disconnected, () => { lkRoom = null; updateGoLiveBtn(false); });
       await lkRoom.connect(url, token);
@@ -466,8 +478,11 @@
   function privDecline() { if (pendingInvite && socket) socket.emit('private:reject', { callId: pendingInvite.callId }); $('privInvite').classList.add('hidden'); pendingInvite = null; }
   async function enterPrivateModel(url, token, price) {
     if (!window.LivekitClient) { toast('El módulo de video no cargó'); return; }
+    // Salir del show ABIERTO: dejar de transmitir en la sala pública antes de
+    // entrar a la privada (la creadora no está en dos salas a la vez).
+    if (lkRoom) { try { lkRoom.disconnect(); } catch {} lkRoom = null; updateGoLiveBtn(false); }
     try {
-      privModelRoom = new LivekitClient.Room({ adaptiveStream: true });
+      privModelRoom = lkPubRoom();
       privModelRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
         if (track.kind === 'video' || track.kind === 'audio') track.attach($('privSelfVideo'));
         const ph = $('privWaitFan'); if (ph && track.kind === 'video') ph.style.display = 'none';

@@ -394,7 +394,23 @@ async function onAuthed() {
   isAuthed = true;
   try {
     currentUser = await LatidoAPI.getMe();
-  } catch { currentUser = null; }
+  } catch {
+    // El access token pudo expirar (TTL corto): intentar refrescarlo una vez.
+    try {
+      const rt = localStorage.getItem('latido_refresh');
+      if (!rt) throw 0;
+      const r = await LatidoAPI.refresh(rt);
+      LatidoAPI.token.set(r.accessToken);
+      if (r.refreshToken) localStorage.setItem('latido_refresh', r.refreshToken);
+      currentUser = await LatidoAPI.getMe();
+    } catch { currentUser = null; }
+  }
+  // Sesión inválida (token vencido y sin refresh útil) → limpiar y seguir como visitante.
+  if (!currentUser) {
+    LatidoAPI.token.clear(); localStorage.removeItem('latido_refresh');
+    isAuthed = false; updateAuthUI(); renderLive(); renderGrid(); go('home');
+    return;
+  }
   updateAuthUI();
   connectSocket();
   // Inicializar E2E — genera keypair si no existe y registra la pública en servidor
@@ -548,6 +564,9 @@ function connectSocket() {
   socket.on('live:chat', (m) => { if (currentLiveModel && m.fromUserId !== (currentUser && currentUser.id)) appendLiveChat('Espectador', m.text, false); });
   socket.on('live:gift', (g) => { if (currentLiveModel) { flyGift(g.emoji); appendLiveChat('🎁', `envió ${g.emoji} ${g.name}`, false); } });
   socket.on('live:viewers', (v) => { const el = $('liveViewers'); if (el && currentLiveModel) el.textContent = '👁 ' + v.count; });
+  // La creadora terminó el show abierto (o entró a un privado con otro fan).
+  // El fan que pidió el privado ya tiene privateCallId (recibió private:accepted antes) → no lo sacamos.
+  socket.on('live:ended', (d) => { if (currentLiveModel && !privateCallId) { toast(d && d.reason === 'model_private' ? 'La creadora entró en un privado 🔒' : 'La transmisión terminó'); leaveLive(); } });
   socket.on('private:accepted', (d) => { privateCallId = d.callId; enterPrivate(d.url, d.token, d.price); });
   socket.on('private:rejected', () => toast('La creadora rechazó el privado'));
   socket.on('private:ended', (d) => { toast(d.reason === 'insufficient_funds' ? 'Privado terminado: sin diamantes' : 'Sala privada finalizada'); teardownPrivate(); });
@@ -641,7 +660,10 @@ async function enterPrivate(url, token, price) {
   if (!window.LivekitClient) return;
   $('live').style.display = 'flex';
   try {
-    privateRoom = new LivekitClient.Room({ adaptiveStream: true });
+    const P = LivekitClient.VideoPresets;
+    privateRoom = new LivekitClient.Room({ adaptiveStream: true, dynacast: true,
+      videoCaptureDefaults: { resolution: P.h540.resolution },
+      publishDefaults: { simulcast: true, videoSimulcastLayers: [P.h180, P.h360], videoEncoding: P.h540.encoding, dtx: true, red: true } });
     privateRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => { if (track.kind === 'video' || track.kind === 'audio') track.attach($('liveRemote')); });
     privateRoom.on(LivekitClient.RoomEvent.Disconnected, () => { teardownPrivate(); });
     await privateRoom.connect(url, token);
@@ -1465,11 +1487,15 @@ document.addEventListener('click', (e) => {
   if (af) af.addEventListener('change', () => avatarFileSelected());
   const sf = $('studioFileInput');
   if (sf) sf.addEventListener('change', () => studioFileSelected());
-  // sesión persistida
-  isAuthed = LatidoAPI.isAuthed();
-  updateAuthUI();
+  // sesión persistida: si hay token, hacer bootstrap COMPLETO (cargar usuario +
+  // conectar socket). ANTES solo ponía isAuthed=true sin conectar el socket, por
+  // lo que gifts, privado y chat en vivo NO funcionaban al recargar/reabrir la app.
   applyAuthMode();
-  // galería pública primero (estilo Tinder/Sugo)
-  renderLive(); renderGrid(); renderChats();
-  go('home');
+  renderChats();
+  if (LatidoAPI.isAuthed()) {
+    onAuthed();
+  } else {
+    isAuthed = false; updateAuthUI();
+    renderLive(); renderGrid(); go('home');   // galería pública (visitante)
+  }
 })();
