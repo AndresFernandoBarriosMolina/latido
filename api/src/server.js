@@ -4,6 +4,11 @@ import { initSockets } from './sockets/index.js';
 import { config, validateConfig } from './config/index.js';
 import { initBuckets } from './services/upload.service.js';
 
+// Red de seguridad: una rejección/excepción no capturada en un handler NO debe
+// tumbar todo el servidor (antes, un hash malformado en /login lo mataba).
+process.on('unhandledRejection', (err) => console.error('unhandledRejection:', err));
+process.on('uncaughtException', (err) => console.error('uncaughtException:', err));
+
 // Falla rápido si falta configuración crítica (secretos, DB, Redis, S3).
 validateConfig();
 

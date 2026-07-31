@@ -90,7 +90,12 @@ router.post('/login', strictLimiter, async (req, res) => {
     [identifier]
   );
   const rec = rows[0];
-  if (!rec || !(await argonVerify(rec.password_hash, password))) {
+  // argonVerify lanza si el hash es NULL/malformado → capturar para NO tumbar el proceso.
+  let pwOk = false;
+  if (rec && rec.password_hash) {
+    try { pwOk = await argonVerify(rec.password_hash, password); } catch { pwOk = false; }
+  }
+  if (!rec || !pwOk) {
     await recordLoginFail(identifier, req.ip);
     return res.status(401).json({ error: 'bad_credentials' });
   }
