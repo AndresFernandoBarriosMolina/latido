@@ -32,7 +32,11 @@ export function applySecurity(app) {
 // Rate limit estricto para endpoints sensibles (login, OTP, pagos)
 export const strictLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 20,                       // 10 era muy bajo: al reintentar login tras perder sesión se bloqueaba
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Responder JSON (antes enviaba texto "Too many requests" → el front no lo parseaba y mostraba error genérico).
+  handler: (req, res) => res.status(429).json({ error: 'rate_limited', retryAfter: 60 }),
   store: new RedisStore({ sendCommand: (...args) => redis.call(...args) }),
 });
 

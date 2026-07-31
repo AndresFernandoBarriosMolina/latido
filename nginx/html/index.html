@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#120821" />
-<title>Latido · Mockup PWA</title>
+<title>Latido - CamStudio</title>
 <style>
   :root{
     /* === MODO OSCURO (sensual: vino · rubí · magenta) === */
@@ -141,6 +141,8 @@
   .mp-dot{flex:1;height:3px;border-radius:3px;background:#ffffff55}
   .mp-dot.on{background:#fff}
   .mp-overlay{position:absolute;left:20px;right:20px;bottom:14px;z-index:6}
+  /* Funciones deshabilitadas temporalmente en la PWA (se re-habilitarán por admin). */
+  .pwa-hidden-feat{display:none!important}
   .mp-actions2{display:flex;gap:10px;padding:14px 20px 4px}
   .mp-actions2 .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px}
   .btn .ic{width:20px;height:20px;flex-shrink:0}
@@ -487,7 +489,7 @@
       </div>
 
       <!-- Botones: chatear / videollamada (videollamada requiere suscripción) -->
-      <div class="mp-actions2">
+      <div class="mp-actions2 pwa-hidden-feat">
         <button class="btn btn-ghost" data-act="chatModel">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3 8.5 8.5 0 0 1 21 11.5z"/></svg>
           Chatear
@@ -708,7 +710,7 @@
         <button class="tback" data-act="go" data-arg="chats">←</button>
         <div class="tav g1" id="thAv">V</div>
         <div class="ti"><b id="thName">Valentina</b><span>🟢 En línea</span></div>
-        <button class="tcall" data-act="tryVideoCall" aria-label="Videollamada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><path d="M16 8.5l5-3v13l-5-3"/><rect x="2" y="5" width="14" height="14" rx="3"/></svg></button>
+        <button class="tcall pwa-hidden-feat" data-act="tryVideoCall" aria-label="Videollamada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="24" height="24"><path d="M16 8.5l5-3v13l-5-3"/><rect x="2" y="5" width="14" height="14" rx="3"/></svg></button>
       </div>
       <div class="th-body" id="thBody">
         <div class="daysep">Hoy</div>
@@ -827,8 +829,8 @@
   <div class="nav" id="nav" style="display:none">
     <button data-v="home" class="on" data-act="go" data-arg="home">🔥<span>Explorar</span></button>
     <button data-v="wallet" data-act="go" data-arg="wallet">💎<span>Billetera</span></button>
-    <button class="fab" data-act="startCall" aria-label="Videollamada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M16 8.5l5-3v13l-5-3"/><rect x="2" y="5" width="14" height="14" rx="3"/></svg></button>
-    <button data-v="chats" data-act="go" data-arg="chats">💬<span>Chats</span></button>
+    <button class="fab pwa-hidden-feat" data-act="startCall" aria-label="Videollamada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M16 8.5l5-3v13l-5-3"/><rect x="2" y="5" width="14" height="14" rx="3"/></svg></button>
+    <button data-v="chats" data-act="go" data-arg="chats" class="pwa-hidden-feat">💬<span>Chats</span></button>
     <button data-v="profile" data-act="go" data-arg="profile">👤<span>Perfil</span></button>
     <button data-v="admin" id="navAdmin" style="display:none" data-act="go" data-arg="admin">⚙️<span>Admin</span></button>
   </div>
@@ -921,6 +923,6 @@
 <script src="livekit-client.umd.min.js?v=1"></script>
 <script src="crypto.js"></script>
 <script src="api.js?v=19"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

@@ -337,9 +337,13 @@ function applyAuthMode() {
     : 'Inicia sesión para ver perfiles, chatear y hacer videollamadas.';
 }
 
+let authBusy = false;
 async function submitAuth() {
+  if (authBusy) return;                       // evita envíos múltiples (clic repetido) que agotan el rate limit
   const email = val('authEmail'), pass = val('authPass');
   if (!email || !pass) { toast('Completa correo y contraseña'); return; }
+  const btn = $('btnPrimary');
+  authBusy = true; if (btn) { btn.disabled = true; btn.style.opacity = '.7'; }
   try {
     let resp;
     if (authMode === 'register') {
@@ -368,8 +372,13 @@ async function submitAuth() {
       already_exists: 'La cuenta ya existe, inicia sesión',
       bad_credentials: 'Correo o contraseña incorrectos',
       invalid: 'Revisa los datos ingresados',
+      rate_limited: 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+      http_429: 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+      account_locked: 'Cuenta bloqueada temporalmente por seguridad. Espera unos minutos.',
     };
     toast(map[e.data && e.data.error] || map[e.message] || 'No se pudo autenticar');
+  } finally {
+    authBusy = false; const b = $('btnPrimary'); if (b) { b.disabled = false; b.style.opacity = ''; }
   }
 }
 
