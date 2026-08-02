@@ -48,12 +48,19 @@ export const strictLimiter = rateLimit({
 const lockKey = (scope, val) => `loginlock:${scope}:${val}`;
 
 export async function isLoginLocked(identifier, ip) {
-  const max = config.security.loginMaxFails;
+  const max = config.security.loginMaxFails;      // umbral por CUENTA (protege una cuenta concreta)
+  // Umbral por IP MUCHO más alto: antes bastaban 8 fallos de UNA cuenta para
+  // bloquear toda la IP, dejando fuera a usuarios legítimos que comparten
+  // red/NAT (oficina, hogar). El bloqueo por IP ahora solo frena ataques
+  // distribuidos (muchas cuentas fallando desde una misma IP).
+  const ipMax = Math.max(40, max * 5);
   const [byId, byIp] = await redis.mget(lockKey('id', identifier), lockKey('ip', ip));
-  if (Number(byId) >= max || Number(byIp) >= max) {
+  const idLocked = Number(byId) >= max;
+  const ipLocked = Number(byIp) >= ipMax;
+  if (idLocked || ipLocked) {
     const ttl = Math.max(
-      await redis.ttl(lockKey('id', identifier)),
-      await redis.ttl(lockKey('ip', ip))
+      idLocked ? await redis.ttl(lockKey('id', identifier)) : 0,
+      ipLocked ? await redis.ttl(lockKey('ip', ip)) : 0
     );
     return { locked: true, retryAfter: ttl > 0 ? ttl : config.security.loginLockSeconds };
   }
