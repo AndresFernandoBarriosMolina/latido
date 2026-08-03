@@ -314,7 +314,10 @@ router.get('/conversations/:id/messages', requireStaff, async (req, res, next) =
 ================================================================ */
 router.get('/payouts', requireAdmin, async (req, res, next) => {
   try {
-    const { status = 'requested', limit = 50, offset = 0 } = req.query;
+    const VALID = ['requested', 'approved', 'processing', 'paid', 'rejected'];
+    let { status = 'requested', limit = 50, offset = 0 } = req.query;
+    if (status === 'pending') status = 'requested';   // alias tolerante (el enum usa 'requested')
+    if (!VALID.includes(status)) status = 'requested'; // evita cast de enum inválido → 500
     const { rows } = await query(
       `SELECT po.*, p.display_name AS model_name, u.email AS model_email
          FROM payouts po

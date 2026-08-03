@@ -80,7 +80,7 @@
   RENDER.finanzas = async function () {
     const c = $('content'); c.innerHTML = spin();
     try {
-      const { items } = await api('/admin/payouts' + qs({ status: 'pending' }));
+      const { items } = await api('/admin/payouts' + qs({ status: 'requested' }));
       const rows = (items || []).map((p) => `<tr>
         <td>${esc(p.model_name || p.handle || p.user_id)}</td>
         <td>${cop(p.amount_cop)}</td>
