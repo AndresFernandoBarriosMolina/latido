@@ -1,5 +1,7 @@
 import { query, withTx } from '../config/db.js';
 import { config } from '../config/index.js';
+import * as settings from './settings.service.js';
+import { distributeRevenue } from './revenue.service.js';
 
 // ============================================================================
 //  Regalos. `sendGift` es atómico: descuenta 💎 al emisor (con guard de saldo),
@@ -24,9 +26,11 @@ export async function sendGift({ senderId, modelId, giftId, context = 'live', co
     const senderDiamonds = Number(dec.rows[0].diamonds);
 
     // Ingreso del modelo (revenue_share sobre el valor en COP de los 💎).
+    const diamondCop = settings.getNum('diamond_price_cop', config.diamondCop);
+    const grossCop = cost * diamondCop;
     const mp = (await c.query(`SELECT revenue_share_bps FROM model_profiles WHERE user_id=$1`, [modelId])).rows[0];
-    const bps = mp?.revenue_share_bps ?? 7000;
-    const modelCop = Math.floor(cost * config.diamondCop * bps / 10000);
+    const bps = mp?.revenue_share_bps ?? settings.getNum('model_revenue_share_bps', 7000);
+    const modelCop = Math.floor(grossCop * bps / 10000);
     await c.query(
       `INSERT INTO wallets (user_id, earnings_cop) VALUES ($1,$2)
        ON CONFLICT (user_id) DO UPDATE SET earnings_cop=wallets.earnings_cop+$2, updated_at=now()`,
@@ -49,6 +53,9 @@ export async function sendGift({ senderId, modelId, giftId, context = 'live', co
        VALUES ($1,'gift_in',$2,'gift',$3,$4)`,
       [modelId, modelCop, g.id, `Regalo recibido ${gift.name}`]
     );
+
+    // Reparto inmediato del restante (plataforma → admin + socios).
+    await distributeRevenue(c, { source: 'gift', refType: 'gift', refId: g.id, modelId, grossCop, modelCop });
 
     return { id: g.id, emoji: gift.emoji, name: gift.name, cost, animation: gift.animation, senderDiamonds, modelEarnedCop: modelCop };
   });

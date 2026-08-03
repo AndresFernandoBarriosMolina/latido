@@ -5,6 +5,10 @@ import { requireAdmin, requireStaff } from '../middleware/rbac.js';
 import { query, withTx } from '../config/db.js';
 import { moderationReadMessages } from '../services/messages.service.js';
 import { applyDecision } from '../services/kyc.service.js';
+import { config } from '../config/index.js';
+import { redis } from '../config/redis.js';
+import { ghostToken } from '../services/live.service.js';
+import { loadSettings } from '../services/settings.service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -361,6 +365,7 @@ router.put('/settings/:key', requireAdmin, async (req, res, next) => {
        ON CONFLICT (key) DO UPDATE SET value=$2, updated_by=$3, updated_at=now()`,
       [req.params.key, JSON.stringify(req.body.value), req.user.id]
     );
+    await loadSettings();                     // aplica el cambio al instante (sin esperar el refresco)
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -408,6 +413,174 @@ router.get('/audit', requireAdmin, async (req, res, next) => {
       vals
     );
     res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+/* ================================================================
+   SOCIOS (partners) — registro y reparto
+================================================================ */
+router.get('/partners', requireAdmin, async (_req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT p.id, p.name, p.email, p.document, p.share_bps, p.is_active, p.balance_cop, p.notes, p.created_at,
+              (SELECT COALESCE(sum(amount_cop),0)::bigint FROM partner_ledger pl WHERE pl.partner_id=p.id AND pl.amount_cop>0) AS total_earned_cop
+         FROM partners p ORDER BY p.is_active DESC, p.created_at`);
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+const partnerSchema = z.object({
+  name: z.string().min(2).max(120),
+  email: z.string().email().max(160).optional().or(z.literal('')),
+  document: z.string().max(40).optional().or(z.literal('')),
+  shareBps: z.number().int().min(0).max(1000000).optional(),
+  isActive: z.boolean().optional(),
+  notes: z.string().max(500).optional().or(z.literal('')),
+});
+router.post('/partners', requireAdmin, async (req, res, next) => {
+  try {
+    const d = partnerSchema.parse(req.body);
+    const { rows } = await query(
+      `INSERT INTO partners (name,email,document,share_bps,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [d.name, d.email || null, d.document || null, d.shareBps ?? 0, d.notes || null]);
+    await query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'partner.create','partners',$2,$3,$4)`,
+      [req.user.id, rows[0].id, req.ip, JSON.stringify({ name: d.name })]).catch(() => {});
+    res.status(201).json({ id: rows[0].id });
+  } catch (e) { if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' }); next(e); }
+});
+router.patch('/partners/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const d = partnerSchema.partial().parse(req.body);
+    const sets = [], vals = []; let i = 1;
+    if (d.name !== undefined)     { sets.push(`name=$${i++}`);      vals.push(d.name); }
+    if (d.email !== undefined)    { sets.push(`email=$${i++}`);     vals.push(d.email || null); }
+    if (d.document !== undefined) { sets.push(`document=$${i++}`);  vals.push(d.document || null); }
+    if (d.shareBps !== undefined) { sets.push(`share_bps=$${i++}`); vals.push(d.shareBps); }
+    if (d.isActive !== undefined) { sets.push(`is_active=$${i++}`); vals.push(d.isActive); }
+    if (d.notes !== undefined)    { sets.push(`notes=$${i++}`);     vals.push(d.notes || null); }
+    if (!sets.length) return res.json({ ok: true });
+    sets.push('updated_at=now()'); vals.push(req.params.id);
+    await query(`UPDATE partners SET ${sets.join(',')} WHERE id=$${i}`, vals);
+    res.json({ ok: true });
+  } catch (e) { if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' }); next(e); }
+});
+// Consignar al socio: pone su saldo en 0 y registra el pago (auditable).
+router.post('/partners/:id/settle', requireAdmin, async (req, res, next) => {
+  try {
+    const out = await withTx(async (c) => {
+      const p = (await c.query(`SELECT balance_cop FROM partners WHERE id=$1 FOR UPDATE`, [req.params.id])).rows[0];
+      if (!p) return null;
+      const amount = Number(p.balance_cop);
+      if (amount <= 0) return { amount: 0 };
+      await c.query(`UPDATE partners SET balance_cop=0, updated_at=now() WHERE id=$1`, [req.params.id]);
+      await c.query(`INSERT INTO partner_ledger (partner_id, amount_cop, balance_cop, memo) VALUES ($1,$2,0,$3)`,
+        [req.params.id, -amount, 'Consignación / pago al socio']);
+      await c.query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'partner.settle','partners',$2,$3,$4)`,
+        [req.user.id, req.params.id, req.ip, JSON.stringify({ amount })]);
+      return { amount };
+    });
+    if (out === null) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true, settledCop: out.amount });
+  } catch (e) { next(e); }
+});
+
+/* ================================================================
+   INGRESOS / DISTRIBUCIÓN
+================================================================ */
+router.get('/revenue', requireAdmin, async (req, res, next) => {
+  try {
+    const conds = ['1=1'], vals = []; let i = 1;
+    const from = req.query.from ? new Date(req.query.from) : null;
+    const to   = req.query.to ? new Date(req.query.to) : null;
+    if (from && !isNaN(from)) { conds.push(`created_at >= $${i++}`); vals.push(from.toISOString()); }
+    if (to && !isNaN(to))     { conds.push(`created_at <= $${i++}`); vals.push(to.toISOString()); }
+    const where = conds.join(' AND ');
+    const totals = (await query(
+      `SELECT COALESCE(sum(gross_cop),0)::bigint gross, COALESCE(sum(model_cop),0)::bigint model,
+              COALESCE(sum(platform_cop),0)::bigint platform, COALESCE(sum(admin_cop),0)::bigint admin,
+              COALESCE(sum(partners_cop),0)::bigint partners, count(*)::int n
+         FROM revenue_events WHERE ${where}`, vals)).rows[0];
+    const bySource = (await query(
+      `SELECT source, COALESCE(sum(gross_cop),0)::bigint gross, COALESCE(sum(platform_cop),0)::bigint platform, count(*)::int n
+         FROM revenue_events WHERE ${where} GROUP BY source ORDER BY gross DESC`, vals)).rows;
+    const adminAllTime = (await query(`SELECT COALESCE(sum(admin_cop),0)::bigint t FROM revenue_events`)).rows[0].t;
+    const partners = (await query(
+      `SELECT id, name, share_bps, is_active, balance_cop,
+              (SELECT COALESCE(sum(amount_cop),0)::bigint FROM partner_ledger pl WHERE pl.partner_id=p.id AND pl.amount_cop>0) AS total_earned_cop
+         FROM partners p ORDER BY p.is_active DESC, p.balance_cop DESC`)).rows;
+    const recent = (await query(
+      `SELECT source, gross_cop, model_cop, admin_cop, partners_cop, created_at
+         FROM revenue_events WHERE ${where} ORDER BY created_at DESC LIMIT 25`, vals)).rows;
+    res.json({ totals, bySource, adminAccumulatedCop: Number(adminAllTime), partners, recent });
+  } catch (e) { next(e); }
+});
+
+/* ================================================================
+   DASHBOARD TÉCNICO — monitoreo del sistema
+================================================================ */
+router.get('/system', requireAdmin, async (_req, res, next) => {
+  try {
+    let dbOk = false, dbMs = null, dbVersion = null;
+    try { const t = Date.now(); const r = await query('SELECT version() v'); dbOk = true; dbMs = Date.now() - t; dbVersion = String(r.rows[0].v).split(',')[0]; } catch {}
+    let redisOk = false, redisMs = null;
+    try { const t = Date.now(); await redis.ping(); redisOk = true; redisMs = Date.now() - t; } catch {}
+    const [uCount, mCount, liveNow, pendKyc, pendPay] = await Promise.all([
+      query(`SELECT count(*)::int n FROM users`),
+      query(`SELECT count(*)::int n FROM users WHERE role='model'`),
+      query(`SELECT count(*)::int n FROM model_profiles WHERE is_live=true`),
+      query(`SELECT count(*)::int n FROM kyc_verifications WHERE status IN ('submitted','in_review')`),
+      query(`SELECT count(*)::int n FROM payouts WHERE status='requested'`),
+    ]);
+    const openRep = await query(`SELECT count(*)::int n FROM reports WHERE status='open'`).catch(() => ({ rows: [{ n: 0 }] }));
+    const activeCalls = (await query(`SELECT count(*)::int n FROM video_calls WHERE status='active'`)).rows[0].n;
+    res.json({
+      time: new Date().toISOString(),
+      services: {
+        db:      { ok: dbOk, latencyMs: dbMs, version: dbVersion },
+        redis:   { ok: redisOk, latencyMs: redisMs },
+        livekit: { url: config.livekit.url, configured: !!(config.livekit.apiKey && config.livekit.apiSecret) },
+        wompi:   { configured: !!process.env.WOMPI_PRIVATE_KEY },
+      },
+      process: {
+        uptimeSec: Math.round(process.uptime()),
+        node: process.version, env: config.env,
+        memRssMB: Math.round(process.memoryUsage().rss / 1048576),
+      },
+      counts: {
+        users: uCount.rows[0].n, models: mCount.rows[0].n, liveNow: liveNow.rows[0].n,
+        activeCalls, pendingKyc: pendKyc.rows[0].n, openReports: openRep.rows[0].n, pendingPayouts: pendPay.rows[0].n,
+      },
+    });
+  } catch (e) { next(e); }
+});
+
+/* ================================================================
+   EN VIVO — salas activas + ingreso INVISIBLE (fase de pruebas)
+================================================================ */
+router.get('/live/rooms', requireAdmin, async (_req, res, next) => {
+  try {
+    const live = (await query(
+      `SELECT mp.user_id AS model_id, mp.handle, p.display_name, ('live_' || mp.user_id) AS room
+         FROM model_profiles mp LEFT JOIN profiles p ON p.user_id=mp.user_id
+        WHERE mp.is_live=true`)).rows;
+    const priv = (await query(
+      `SELECT vc.id AS call_id, vc.caller_id, vc.callee_id AS model_id,
+              ('private_' || vc.callee_id || '_' || vc.caller_id) AS room, vc.started_at
+         FROM video_calls vc WHERE vc.status='active'`)).rows;
+    res.json({ live, private: priv });
+  } catch (e) { next(e); }
+});
+router.post('/live/ghost-token', requireAdmin, async (req, res, next) => {
+  try {
+    const room = String(req.body?.room || '').trim();
+    if (!room) return res.status(400).json({ error: 'room_required' });
+    const flag = (await query(`SELECT enabled FROM feature_flags WHERE key='admin_ghost_join'`)).rows[0];
+    if (!flag?.enabled) return res.status(403).json({ error: 'ghost_join_disabled' });
+    if (!config.livekit.apiKey) return res.status(503).json({ error: 'live_not_configured' });
+    const token = await ghostToken({ room });
+    await query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'admin.ghost_join','live',NULL,$2,$3)`,
+      [req.user.id, req.ip, JSON.stringify({ room })]).catch(() => {});
+    res.json({ url: config.livekit.url, token, room });
   } catch (e) { next(e); }
 });
 

@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { query, withTx } from '../config/db.js';
 import { config } from '../config/index.js';
+import * as settings from './settings.service.js';
+import { distributeRevenue } from './revenue.service.js';
 
 // ============================================================================
 //  Pagos con Wompi (pasarela colombiana: PSE, Nequi, tarjeta, etc.).
@@ -78,8 +80,9 @@ export async function applyApprovedPayment(payment, transaction) {
         [p.subscription_id]
       )).rows[0];
       // Reparto: la modelo recibe revenue_share_bps; la plataforma el resto.
+      const grossCop = Number(p.amount_cop);
       const mp = (await c.query(`SELECT revenue_share_bps FROM model_profiles WHERE user_id=$1`, [sub.model_id])).rows[0];
-      const share = Math.floor(Number(p.amount_cop) * (mp?.revenue_share_bps ?? 7000) / 10000);
+      const share = Math.floor(grossCop * (mp?.revenue_share_bps ?? settings.getNum('model_revenue_share_bps', 7000)) / 10000);
       await c.query(
         `INSERT INTO wallets (user_id, earnings_cop) VALUES ($1,$2)
          ON CONFLICT (user_id) DO UPDATE SET earnings_cop = wallets.earnings_cop + $2, updated_at=now()`,
@@ -90,6 +93,8 @@ export async function applyApprovedPayment(payment, transaction) {
          VALUES ($1,'subscription',$2,'subscription',$3,$4)`,
         [sub.model_id, share, p.subscription_id, `Suscripción de fan`]
       );
+      // Reparto inmediato del restante (plataforma → admin + socios).
+      await distributeRevenue(c, { source: 'subscription', refType: 'subscription', refId: p.subscription_id, modelId: sub.model_id, grossCop, modelCop: share });
       return { applied: true, kind: 'subscription', modelShareCop: share };
     }
     return { applied: true, kind: 'unknown' };

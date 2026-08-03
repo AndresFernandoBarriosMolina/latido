@@ -3,6 +3,8 @@ import { createApp } from './app.js';
 import { initSockets } from './sockets/index.js';
 import { config, validateConfig } from './config/index.js';
 import { initBuckets } from './services/upload.service.js';
+import { runMigrations } from './config/migrate.js';
+import { seedDefaults, startSettingsRefresh } from './services/settings.service.js';
 
 // Red de seguridad: una rejección/excepción no capturada en un handler NO debe
 // tumbar todo el servidor (antes, un hash malformado en /login lo mataba).
@@ -17,6 +19,17 @@ const server = http.createServer(app);
 initSockets(server);
 
 initBuckets().catch(e => console.warn('MinIO bucket init:', e.message));
+
+// Migraciones idempotentes + siembra de configuración (no bloquean el arranque).
+(async () => {
+  try {
+    await runMigrations();
+    await seedDefaults();
+    startSettingsRefresh();
+  } catch (e) {
+    console.error('boot (migrate/seed) error:', e.message);
+  }
+})();
 
 server.listen(config.port, () => {
   console.log(`Latido API escuchando en :${config.port} (${config.env})`);
