@@ -52,7 +52,7 @@
   }
 
   /* ---------- Navegación ---------- */
-  const TITLES = { dashboard: 'Dashboard', finanzas: 'Finanzas', usuarios: 'Usuarios', kyc: 'Verificaciones KYC', reportes: 'Reportes', moderacion: 'Moderación de conversaciones', config: 'Configuración', auditoria: 'Auditoría' };
+  const TITLES = { dashboard: 'Dashboard', ingresos: 'Ingresos y distribución', socios: 'Socios', finanzas: 'Finanzas', envivo: 'En vivo (monitoreo)', usuarios: 'Usuarios', kyc: 'Verificaciones KYC', reportes: 'Reportes', moderacion: 'Moderación de conversaciones', sistema: 'Sistema (monitoreo técnico)', config: 'Configuración', auditoria: 'Auditoría' };
   const RENDER = {};
   function navigate(v) {
     document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('on', n.dataset.nav === v));
@@ -248,22 +248,182 @@
     } catch (e) { $('modMsgs').innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
   }
 
-  /* ---------- Configuración ---------- */
+  /* ---------- Ingresos y distribución ---------- */
+  RENDER.ingresos = async function () {
+    const c = $('content'); c.innerHTML = spin();
+    try {
+      const r = await api('/admin/revenue'); const t = r.totals || {};
+      c.innerHTML = `
+      <div class="kpi-grid">
+        <div class="kpi"><div class="v">${cop(t.gross)}</div><div class="l">Bruto total</div></div>
+        <div class="kpi"><div class="v">${cop(t.model)}</div><div class="l">A modelos</div></div>
+        <div class="kpi"><div class="v">${cop(t.platform)}</div><div class="l">Plataforma</div></div>
+        <div class="kpi"><div class="v">${cop(r.adminAccumulatedCop)}</div><div class="l">Tu ingreso (admin)</div></div>
+        <div class="kpi"><div class="v">${cop(t.partners)}</div><div class="l">A socios</div></div>
+        <div class="kpi"><div class="v">${num(t.n)}</div><div class="l">Transacciones</div></div>
+      </div>
+      <div class="panel"><div class="panel-h">Saldos de socios (por consignar)</div>
+        <table><thead><tr><th>Socio</th><th>Saldo</th><th>Ganado (total)</th><th>Peso</th></tr></thead><tbody>
+        ${(r.partners || []).map((p) => `<tr><td>${esc(p.name)} ${p.is_active ? '' : '<span class="muted">(inactivo)</span>'}</td><td><b>${cop(p.balance_cop)}</b></td><td class="muted">${cop(p.total_earned_cop)}</td><td class="muted">${p.share_bps}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Sin socios.</td></tr>'}
+        </tbody></table></div>
+      <div class="panel"><div class="panel-h">Por fuente</div>
+        ${(r.bySource || []).map((s) => `<div class="srow"><div class="sk">${esc(s.source)}</div><span class="sv">${cop(s.gross)} bruto · plataforma ${cop(s.platform)} · ${num(s.n)} tx</span></div>`).join('') || '<div class="empty">Sin ingresos aún.</div>'}
+      </div>
+      <div class="panel"><div class="panel-h">Últimos movimientos</div>
+        <table><thead><tr><th>Fuente</th><th>Bruto</th><th>Modelo</th><th>Admin</th><th>Socios</th><th>Fecha</th></tr></thead><tbody>
+        ${(r.recent || []).map((e) => `<tr><td>${esc(e.source)}</td><td>${cop(e.gross_cop)}</td><td>${cop(e.model_cop)}</td><td>${cop(e.admin_cop)}</td><td>${cop(e.partners_cop)}</td><td class="muted">${dt(e.created_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin movimientos.</td></tr>'}
+        </tbody></table></div>`;
+    } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
+  };
+
+  /* ---------- Socios ---------- */
+  RENDER.socios = async function () {
+    const c = $('content'); c.innerHTML = spin();
+    try {
+      const { items } = await api('/admin/partners');
+      const rows = (items || []).map((p) => `<tr>
+        <td><b>${esc(p.name)}</b>${p.email ? `<div class="muted" style="font-size:.72rem">${esc(p.email)}</div>` : ''}</td>
+        <td>${p.share_bps} <span class="muted">(${(p.share_bps / 100).toFixed(2)}%)</span></td>
+        <td><b>${cop(p.balance_cop)}</b></td><td class="muted">${cop(p.total_earned_cop)}</td>
+        <td>${p.is_active ? '<span class="pill ok">Activo</span>' : '<span class="pill bad">Inactivo</span>'}</td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm" data-action="editPartner" data-arg="${p.id}">Editar</button>
+          <button class="btn btn-sm" data-action="settlePartner" data-arg="${p.id}|${p.balance_cop}">Consignar</button>
+          <button class="btn btn-sm" data-action="togglePartner" data-arg="${p.id}|${p.is_active}">${p.is_active ? 'Desactivar' : 'Activar'}</button>
+        </td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin socios registrados.</td></tr>';
+      c.innerHTML = `
+      <div class="panel"><div class="panel-h">Registrar socio</div>
+        <div class="form-row"><input class="field" id="pName" placeholder="Nombre" /><input class="field" id="pEmail" placeholder="Correo (opcional)" /></div>
+        <div class="form-row"><input class="field" id="pDoc" placeholder="Documento (opcional)" /><input class="field" id="pShare" type="number" placeholder="Peso de participación (ej. 5000)" /></div>
+        <div class="muted" style="font-size:.78rem;margin:4px 0 10px">El "peso" define cómo se reparte entre socios el pool que queda tras tu comisión de administrador. Ej.: dos socios con 6000 y 4000 → 60% y 40% del pool.</div>
+        <button class="btn btn-primary" data-action="savePartner">Registrar socio</button>
+      </div>
+      <div class="panel"><div class="panel-h">Socios</div>
+        <table><thead><tr><th>Socio</th><th>Peso</th><th>Saldo</th><th>Ganado</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
+  };
+  async function savePartner() {
+    const name = $('pName').value.trim(); if (!name) { toast('El nombre es requerido'); return; }
+    const body = { name, email: $('pEmail').value.trim(), document: $('pDoc').value.trim(), shareBps: Number($('pShare').value) || 0 };
+    try { await api('/admin/partners', { method: 'POST', body }); toast('Socio registrado ✓'); RENDER.socios(); }
+    catch (e) { toast('Error: ' + e.message); }
+  }
+  async function editPartner(id) {
+    const name = prompt('Nombre del socio (dejar vacío para no cambiar):');
+    const share = prompt('Peso de participación (bps, ej. 5000; vacío = no cambiar):');
+    const body = {}; if (name) body.name = name; if (share !== null && share !== '') body.shareBps = Number(share) || 0;
+    if (!Object.keys(body).length) return;
+    try { await api('/admin/partners/' + id, { method: 'PATCH', body }); toast('Actualizado ✓'); RENDER.socios(); } catch { toast('Error'); }
+  }
+  async function settlePartner(arg) {
+    const [id, bal] = arg.split('|'); if (Number(bal) <= 0) { toast('Sin saldo por consignar'); return; }
+    if (!confirm(`¿Registrar la consignación de ${cop(bal)} a este socio y poner su saldo en 0?`)) return;
+    try { const r = await api('/admin/partners/' + id + '/settle', { method: 'POST', body: {} }); toast('Consignado ' + cop(r.settledCop) + ' ✓'); RENDER.socios(); } catch { toast('Error'); }
+  }
+  async function togglePartner(arg) {
+    const [id, active] = arg.split('|');
+    try { await api('/admin/partners/' + id, { method: 'PATCH', body: { isActive: active !== 'true' } }); toast('Actualizado ✓'); RENDER.socios(); } catch { toast('Error'); }
+  }
+
+  /* ---------- En vivo (monitoreo + ingreso invisible) ---------- */
+  let lkLoading = null;
+  function ensureLivekit() {
+    if (window.LivekitClient) return Promise.resolve();
+    if (lkLoading) return lkLoading;
+    lkLoading = new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = '/estudio/livekit-client.umd.min.js?v=1'; s.onload = resolve; s.onerror = reject; document.head.appendChild(s); });
+    return lkLoading;
+  }
+  RENDER.envivo = async function () {
+    const c = $('content'); c.innerHTML = spin();
+    try {
+      const [rooms, flags] = await Promise.all([api('/admin/live/rooms'), api('/admin/flags')]);
+      const ghostOn = (flags.items || []).some((f) => f.key === 'admin_ghost_join' && f.enabled);
+      const liveR = (rooms.live || []).map((r) => `<tr><td>${esc(r.display_name || r.handle || '')} <span class="muted">@${esc(r.handle || '')}</span></td><td class="muted">Directo</td><td><button class="btn btn-sm" data-action="ghostJoin" data-arg="${r.room}" ${ghostOn ? '' : 'disabled'}>Entrar invisible</button></td></tr>`).join('');
+      const privR = (rooms.private || []).map((r) => `<tr><td class="muted">${esc(String(r.model_id).slice(0, 8))} ⇄ ${esc(String(r.caller_id).slice(0, 8))}</td><td class="muted">Privado</td><td><button class="btn btn-sm" data-action="ghostJoin" data-arg="${r.room}" ${ghostOn ? '' : 'disabled'}>Entrar invisible</button></td></tr>`).join('');
+      const rows = (liveR + privR) || '<tr><td colspan="3" class="empty">No hay salas activas ahora.</td></tr>';
+      c.innerHTML = `
+      <div class="panel"><div class="panel-h">Ingreso invisible — FASE DE PRUEBAS <button class="toggle ${ghostOn ? 'on' : ''}" data-action="toggleFlag" data-arg="admin_ghost_join|${ghostOn}"></button></div>
+        <div class="muted" style="font-size:.82rem">${ghostOn ? '✅ Activado: puedes entrar a cualquier sala de forma INVISIBLE (la modelo y el fan no te ven, no publicas cámara/audio, no interfieres). ⚠️ Apágalo antes de salir a producción.' : '⚠️ Apagado. Actívalo con el interruptor para poder entrar de forma invisible a las salas.'}</div>
+      </div>
+      <div class="panel"><div class="panel-h">Salas activas <button class="btn btn-sm" data-action="go" data-arg="envivo">↻ Refrescar</button></div>
+        <table><thead><tr><th>Sala</th><th>Tipo</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div id="ghostBox"></div>`;
+    } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
+  };
+  async function ghostJoin(room) {
+    try {
+      const r = await api('/admin/live/ghost-token', { method: 'POST', body: { room } });
+      $('ghostBox').innerHTML = `<div class="panel"><div class="panel-h">Conectado (invisible) · ${esc(room)}</div>
+        <video id="ghostVideo" autoplay playsinline style="width:100%;max-height:60vh;background:#000;border-radius:10px"></video>
+        <div class="muted" style="font-size:.78rem;margin-top:6px">Eres invisible para la modelo y el fan. Token válido 2h.</div></div>`;
+      await ensureLivekit();
+      const rm = new LivekitClient.Room({ adaptiveStream: true });
+      rm.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => { if (track.kind === 'video' || track.kind === 'audio') track.attach($('ghostVideo')); });
+      await rm.connect(r.url, r.token);
+      toast('Conectado invisible ✓');
+    } catch (e) { toast(e.data?.error === 'ghost_join_disabled' ? 'Activa el ingreso invisible primero' : 'Error: ' + (e.message || '')); }
+  }
+
+  /* ---------- Sistema (monitoreo técnico) ---------- */
+  RENDER.sistema = async function () {
+    const c = $('content'); c.innerHTML = spin();
+    try {
+      const s = await api('/admin/system'); const badge = (ok) => `<span class="pill ${ok ? 'ok' : 'bad'}">${ok ? 'OK' : 'FALLA'}</span>`;
+      c.innerHTML = `
+      <div class="kpi-grid">
+        <div class="kpi"><div class="v">${num(s.counts.users)}</div><div class="l">Usuarios</div></div>
+        <div class="kpi"><div class="v">${num(s.counts.models)}</div><div class="l">Creadoras</div></div>
+        <div class="kpi"><div class="v">${num(s.counts.liveNow)}</div><div class="l">En vivo ahora</div></div>
+        <div class="kpi"><div class="v">${num(s.counts.activeCalls)}</div><div class="l">Llamadas activas</div></div>
+        <div class="kpi"><div class="v">${num(s.counts.pendingKyc)}</div><div class="l">KYC pendientes</div></div>
+        <div class="kpi"><div class="v">${num(s.counts.pendingPayouts)}</div><div class="l">Payouts pendientes</div></div>
+      </div>
+      <div class="panel"><div class="panel-h">Servicios</div>
+        <div class="srow"><div class="sk">Base de datos</div><span class="sv">${badge(s.services.db.ok)} ${s.services.db.latencyMs ?? '—'}ms · ${esc(s.services.db.version || '')}</span></div>
+        <div class="srow"><div class="sk">Redis</div><span class="sv">${badge(s.services.redis.ok)} ${s.services.redis.latencyMs ?? '—'}ms</span></div>
+        <div class="srow"><div class="sk">LiveKit (video)</div><span class="sv">${badge(s.services.livekit.configured)} ${esc(s.services.livekit.url || '')}</span></div>
+        <div class="srow"><div class="sk">Wompi (pagos)</div><span class="sv">${badge(s.services.wompi.configured)} ${s.services.wompi.configured ? '' : '(sin llaves reales)'}</span></div>
+      </div>
+      <div class="panel"><div class="panel-h">Proceso <button class="btn btn-sm" data-action="go" data-arg="sistema">↻ Refrescar</button></div>
+        <div class="srow"><div class="sk">Uptime</div><span class="sv">${Math.floor(s.process.uptimeSec / 60)} min</span></div>
+        <div class="srow"><div class="sk">Node / entorno</div><span class="sv">${esc(s.process.node)} · ${esc(s.process.env)}</span></div>
+        <div class="srow"><div class="sk">Memoria (RSS)</div><span class="sv">${num(s.process.memRssMB)} MB</span></div>
+        <div class="srow"><div class="sk">Hora del servidor</div><span class="sv">${dt(s.time)}</span></div>
+      </div>`;
+    } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
+  };
+
+  /* ---------- Configuración (editable) ---------- */
   RENDER.config = async function () {
     const c = $('content'); c.innerHTML = spin();
     try {
       const [flags, settings] = await Promise.all([api('/admin/flags'), api('/admin/settings')]);
-      const fl = (flags.items || []).map((f) => `<div class="srow"><div><div class="sk">${esc(f.key)}</div><div class="sv">Rollout: ${f.rollout_pct ?? 100}%</div></div>
+      const descByKey = {}; (settings.items || []).forEach((s) => { if (s.key.indexOf('flag_desc_') === 0) descByKey[s.key.slice(10)] = s.value; });
+      const fl = (flags.items || []).map((f) => `<div class="srow"><div style="flex:1"><div class="sk">${esc(f.key)}</div><div class="sv">${esc(descByKey[f.key] || '')}</div></div>
         <button class="toggle ${f.enabled ? 'on' : ''}" data-action="toggleFlag" data-arg="${f.key}|${f.enabled}"></button></div>`).join('') || '<div class="empty">Sin flags.</div>';
-      const st = (settings.items || []).map((s) => `<div class="srow"><div><div class="sk">${esc(s.key)}</div><div class="sv">${esc(s.description || '')}</div></div>
-        <span class="sv">${esc(JSON.stringify(s.value))}</span></div>`).join('') || '<div class="empty">Sin configuración.</div>';
-      c.innerHTML = `<div class="panel"><div class="panel-h">Feature flags</div>${fl}</div>
-        <div class="panel"><div class="panel-h">Configuración del sistema</div>${st}</div>`;
+      const items = (settings.items || []).filter((s) => s.key.indexOf('flag_desc_') !== 0);
+      const st = items.map((s) => {
+        const isNum = typeof s.value === 'number';
+        const v = isNum ? s.value : (typeof s.value === 'string' ? s.value : JSON.stringify(s.value));
+        return `<div class="srow"><div style="flex:1"><div class="sk">${esc(s.key)}</div><div class="sv">${esc(s.description || '')}</div></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input class="field" style="width:160px;margin:0;padding:7px 10px" id="set_${esc(s.key)}" value="${esc(v)}" data-type="${isNum ? 'number' : 'string'}" ${isNum ? 'type="number"' : ''}/>
+            <button class="btn btn-sm" data-action="saveSetting" data-arg="${esc(s.key)}">Guardar</button>
+          </div></div>`;
+      }).join('') || '<div class="empty">Sin configuración.</div>';
+      c.innerHTML = `<div class="panel"><div class="panel-h">Parámetros del sistema</div>${st}</div>
+        <div class="panel"><div class="panel-h">Feature flags</div>${fl}</div>`;
     } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
   };
+  async function saveSetting(key) {
+    const inp = $('set_' + key); if (!inp) return;
+    let value = inp.value;
+    if (inp.dataset.type === 'number') { value = Number(value); if (!Number.isFinite(value)) { toast('Valor numérico inválido'); return; } }
+    try { await api('/admin/settings/' + encodeURIComponent(key), { method: 'PUT', body: { value } }); toast('Guardado ✓'); } catch { toast('Error'); }
+  }
   async function toggleFlag(arg) {
     const [key, cur] = arg.split('|'); const enabled = cur !== 'true';
-    try { await api('/admin/flags/' + key, { method: 'PATCH', body: { enabled, rolloutPct: 100 } }); toast(`Flag ${key}: ${enabled ? 'ON' : 'OFF'}`); RENDER.config(); }
+    try { await api('/admin/flags/' + key, { method: 'PATCH', body: { enabled, rolloutPct: 100 } }); toast(`Flag ${key}: ${enabled ? 'ON' : 'OFF'}`); navigate(document.querySelector('.nav-item.on')?.dataset.nav || 'config'); }
     catch { toast('Error'); }
   }
 
@@ -285,6 +445,8 @@
     openUser: (a) => openUser(a), setStatus: (a) => setStatus(a), setRole: (a) => setRole(a), notifyUser: (a) => notifyUser(a),
     kycDecide: (a) => kycDecide(a), resolveReport: (a) => resolveReport(a), toggleFlag: (a) => toggleFlag(a),
     modUserConvs: (a) => modUserConvs(a), modReadConv: (a) => modReadConv(a),
+    savePartner: () => savePartner(), editPartner: (a) => editPartner(a), settlePartner: (a) => settlePartner(a), togglePartner: (a) => togglePartner(a),
+    saveSetting: (a) => saveSetting(a), ghostJoin: (a) => ghostJoin(a),
   };
   document.addEventListener('click', (e) => {
     const nav = e.target.closest('[data-nav]'); if (nav) { navigate(nav.dataset.nav); return; }

@@ -93,3 +93,10 @@ input[type=search],.search{width:280px;max-width:60vw}
 .toggle{width:42px;height:24px;border-radius:999px;border:none;background:#cbd5e1;position:relative;cursor:pointer}
 .toggle::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}
 .toggle.on{background:var(--ok)}.toggle.on::after{left:21px}
+
+/* --- Añadidos: pills de estado y filas de formulario --- */
+.pill{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.72rem;font-weight:700}
+.pill.ok{background:rgba(34,197,94,.16);color:#22c55e}
+.pill.bad{background:rgba(239,68,68,.16);color:#ef4444}
+.form-row{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.form-row .field{flex:1;min-width:160px;margin:0}
