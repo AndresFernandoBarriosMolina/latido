@@ -293,10 +293,12 @@
         </td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin socios registrados.</td></tr>';
       c.innerHTML = `
       <div class="panel"><div class="panel-h">Registrar socio</div>
-        <div class="form-row"><input class="field" id="pName" placeholder="Nombre" /><input class="field" id="pEmail" placeholder="Correo (opcional)" /></div>
-        <div class="form-row"><input class="field" id="pDoc" placeholder="Documento (opcional)" /><input class="field" id="pShare" type="number" placeholder="Peso de participación (ej. 5000)" /></div>
-        <div class="muted" style="font-size:.78rem;margin:4px 0 10px">El "peso" define cómo se reparte entre socios el pool que queda tras tu comisión de administrador. Ej.: dos socios con 6000 y 4000 → 60% y 40% del pool.</div>
-        <button class="btn btn-primary" data-action="savePartner">Registrar socio</button>
+        <div class="panel-b">
+          <div class="form-row"><input class="field" id="pName" placeholder="Nombre" /><input class="field" id="pEmail" placeholder="Correo (opcional)" /></div>
+          <div class="form-row"><input class="field" id="pDoc" placeholder="Documento (opcional)" /><input class="field" id="pShare" type="number" placeholder="Peso de participación (ej. 5000)" /></div>
+          <div class="muted" style="font-size:.78rem;margin:4px 0 12px">El "peso" define cómo se reparte entre socios el pool que queda tras tu comisión de administrador. Ej.: dos socios con 6000 y 4000 → 60% y 40% del pool.</div>
+          <button class="btn btn-primary" data-action="savePartner">Registrar socio</button>
+        </div>
       </div>
       <div class="panel"><div class="panel-h">Socios</div>
         <table><thead><tr><th>Socio</th><th>Peso</th><th>Saldo</th><th>Ganado</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -343,7 +345,7 @@
       const rows = (liveR + privR) || '<tr><td colspan="3" class="empty">No hay salas activas ahora.</td></tr>';
       c.innerHTML = `
       <div class="panel"><div class="panel-h">Ingreso invisible — FASE DE PRUEBAS <button class="toggle ${ghostOn ? 'on' : ''}" data-action="toggleFlag" data-arg="admin_ghost_join|${ghostOn}"></button></div>
-        <div class="muted" style="font-size:.82rem">${ghostOn ? '✅ Activado: puedes entrar a cualquier sala de forma INVISIBLE (la modelo y el fan no te ven, no publicas cámara/audio, no interfieres). ⚠️ Apágalo antes de salir a producción.' : '⚠️ Apagado. Actívalo con el interruptor para poder entrar de forma invisible a las salas.'}</div>
+        <div class="panel-b"><div class="muted" style="font-size:.82rem">${ghostOn ? '✅ Activado: puedes entrar a cualquier sala de forma INVISIBLE (la modelo y el fan no te ven, no publicas cámara/audio, no interfieres). ⚠️ Apágalo antes de salir a producción.' : '⚠️ Apagado. Actívalo con el interruptor para poder entrar de forma invisible a las salas.'}</div></div>
       </div>
       <div class="panel"><div class="panel-h">Salas activas <button class="btn btn-sm" data-action="go" data-arg="envivo">↻ Refrescar</button></div>
         <table><thead><tr><th>Sala</th><th>Tipo</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -394,18 +396,36 @@
   };
 
   /* ---------- Configuración (editable) ---------- */
+  const SETTING_LABELS = {
+    model_revenue_share_bps: 'Ingreso para la modelo (bps · 7000 = 70%)',
+    admin_share_bps: 'Comisión del administrador / sostenibilidad (bps · 500 = 5% del restante)',
+    diamond_price_cop: 'Precio del diamante (COP)',
+    min_payout_cop: 'Retiro mínimo (COP)',
+    payout_fee_bps: 'Comisión de retiro (bps)',
+    payout_fee_fixed_cop: 'Comisión fija por retiro (COP)',
+    tax_withholding_bps: 'Retención de impuestos (bps)',
+    signup_bonus_diamonds: 'Bono de bienvenida (💎)',
+    min_call_price_diamonds: 'Precio mínimo de privado (💎/min)',
+    max_call_price_diamonds: 'Precio máximo de privado (💎/min)',
+    platform_name: 'Nombre del sitio',
+    support_email: 'Correo de soporte',
+  };
+  const FLAG_LABELS = {
+    admin_ghost_join: 'Ingreso invisible del administrador (solo pruebas)',
+    maintenance_mode: 'Modo mantenimiento',
+  };
   RENDER.config = async function () {
     const c = $('content'); c.innerHTML = spin();
     try {
       const [flags, settings] = await Promise.all([api('/admin/flags'), api('/admin/settings')]);
       const descByKey = {}; (settings.items || []).forEach((s) => { if (s.key.indexOf('flag_desc_') === 0) descByKey[s.key.slice(10)] = s.value; });
-      const fl = (flags.items || []).map((f) => `<div class="srow"><div style="flex:1"><div class="sk">${esc(f.key)}</div><div class="sv">${esc(descByKey[f.key] || '')}</div></div>
+      const fl = (flags.items || []).map((f) => `<div class="srow"><div style="flex:1"><div class="sk">${esc(FLAG_LABELS[f.key] || f.key)}</div><div class="sv">${esc(descByKey[f.key] || '')}</div></div>
         <button class="toggle ${f.enabled ? 'on' : ''}" data-action="toggleFlag" data-arg="${f.key}|${f.enabled}"></button></div>`).join('') || '<div class="empty">Sin flags.</div>';
       const items = (settings.items || []).filter((s) => s.key.indexOf('flag_desc_') !== 0);
       const st = items.map((s) => {
         const isNum = typeof s.value === 'number';
         const v = isNum ? s.value : (typeof s.value === 'string' ? s.value : JSON.stringify(s.value));
-        return `<div class="srow"><div style="flex:1"><div class="sk">${esc(s.key)}</div><div class="sv">${esc(s.description || '')}</div></div>
+        return `<div class="srow"><div style="flex:1"><div class="sk">${esc(SETTING_LABELS[s.key] || s.key)}</div><div class="sv">${esc(s.description || '')}</div></div>
           <div style="display:flex;gap:6px;align-items:center">
             <input class="field" style="width:160px;margin:0;padding:7px 10px" id="set_${esc(s.key)}" value="${esc(v)}" data-type="${isNum ? 'number' : 'string'}" ${isNum ? 'type="number"' : ''}/>
             <button class="btn btn-sm" data-action="saveSetting" data-arg="${esc(s.key)}">Guardar</button>

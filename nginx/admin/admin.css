@@ -58,7 +58,7 @@ select.field{cursor:pointer}textarea.field{resize:vertical;min-height:70px}
 /* KPIs / paneles */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px;margin-bottom:22px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
-.kpi{padding:18px}
+.kpi{padding:18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
 .kpi .v{font-size:1.7rem;font-weight:800}
 .kpi .l{color:var(--muted);font-size:.8rem;margin-top:3px}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:20px;box-shadow:var(--shadow);overflow:hidden}
