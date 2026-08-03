@@ -10,3 +10,5 @@ export function requireRole(...roles) {
 export const requireAdmin = requireRole('admin');
 export const requireStaff = requireRole('admin', 'moderator');
 export const requireModel = requireRole('model', 'admin');
+// Socios: acceso al portal /socio (el admin también entra, para soporte).
+export const requirePartner = requireRole('partner', 'admin');

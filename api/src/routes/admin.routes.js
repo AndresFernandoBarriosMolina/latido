@@ -9,6 +9,7 @@ import { config } from '../config/index.js';
 import { redis } from '../config/redis.js';
 import { ghostToken } from '../services/live.service.js';
 import { loadSettings } from '../services/settings.service.js';
+import { hashPassword } from '../services/password.service.js';
 
 const router = Router();
 router.use(authenticate);
@@ -426,6 +427,7 @@ router.get('/partners', requireAdmin, async (_req, res, next) => {
   try {
     const { rows } = await query(
       `SELECT p.id, p.name, p.email, p.document, p.share_bps, p.is_active, p.balance_cop, p.notes, p.created_at,
+              (p.user_id IS NOT NULL) AS has_access,
               (SELECT COALESCE(sum(amount_cop),0)::bigint FROM partner_ledger pl WHERE pl.partner_id=p.id AND pl.amount_cop>0) AS total_earned_cop
          FROM partners p ORDER BY p.is_active DESC, p.created_at`);
     res.json({ items: rows });
@@ -435,21 +437,71 @@ router.get('/partners', requireAdmin, async (_req, res, next) => {
 const partnerSchema = z.object({
   name: z.string().min(2).max(120),
   email: z.string().email().max(160).optional().or(z.literal('')),
+  password: z.string().min(8).max(200).optional().or(z.literal('')),
   document: z.string().max(40).optional().or(z.literal('')),
   shareBps: z.number().int().min(0).max(1000000).optional(),
   isActive: z.boolean().optional(),
   notes: z.string().max(500).optional().or(z.literal('')),
 });
+
+// Crea una cuenta de acceso (rol 'partner') y devuelve su id de usuario.
+async function createPartnerUser(c, { email, password, name }) {
+  const u = (await c.query(
+    `INSERT INTO users (role,status,email,age_verified,age_verified_at,data_consent_at,tos_version)
+     VALUES ('partner','active',$1,true,now(),now(),'1.0') RETURNING id`, [email])).rows[0];
+  const hash = await hashPassword(password);
+  await c.query(`INSERT INTO auth_identities (user_id,provider,password_hash) VALUES ($1,'password',$2)`, [u.id, hash]);
+  await c.query(`INSERT INTO profiles (user_id,display_name) VALUES ($1,$2)`, [u.id, name]);
+  return u.id;
+}
+
 router.post('/partners', requireAdmin, async (req, res, next) => {
   try {
     const d = partnerSchema.parse(req.body);
-    const { rows } = await query(
-      `INSERT INTO partners (name,email,document,share_bps,notes) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [d.name, d.email || null, d.document || null, d.shareBps ?? 0, d.notes || null]);
-    await query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'partner.create','partners',$2,$3,$4)`,
-      [req.user.id, rows[0].id, req.ip, JSON.stringify({ name: d.name })]).catch(() => {});
-    res.status(201).json({ id: rows[0].id });
-  } catch (e) { if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' }); next(e); }
+    const out = await withTx(async (c) => {
+      let userId = null;
+      if (d.email && d.password) userId = await createPartnerUser(c, { email: d.email, password: d.password, name: d.name });
+      const p = (await c.query(
+        `INSERT INTO partners (name,email,document,share_bps,notes,user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [d.name, d.email || null, d.document || null, d.shareBps ?? 0, d.notes || null, userId])).rows[0];
+      await c.query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'partner.create','partners',$2,$3,$4)`,
+        [req.user.id, p.id, req.ip, JSON.stringify({ name: d.name, access: !!userId })]).catch(() => {});
+      return { id: p.id, hasAccess: !!userId };
+    });
+    res.status(201).json(out);
+  } catch (e) {
+    if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' });
+    if (e?.code === '23505') return res.status(409).json({ error: 'email_in_use' });
+    next(e);
+  }
+});
+
+// Crear/restablecer el acceso (correo + contraseña) de un socio.
+router.post('/partners/:id/access', requireAdmin, async (req, res, next) => {
+  try {
+    const email = String(req.body?.email || '').trim();
+    const password = String(req.body?.password || '');
+    if (!email || password.length < 8) return res.status(400).json({ error: 'invalid' });
+    const p = (await query(`SELECT id, name, user_id FROM partners WHERE id=$1`, [req.params.id])).rows[0];
+    if (!p) return res.status(404).json({ error: 'not_found' });
+    await withTx(async (c) => {
+      if (p.user_id) {
+        const hash = await hashPassword(password);
+        await c.query(`UPDATE users SET email=$1, role='partner', status='active' WHERE id=$2`, [email, p.user_id]);
+        const upd = await c.query(`UPDATE auth_identities SET password_hash=$1 WHERE user_id=$2 AND provider='password'`, [hash, p.user_id]);
+        if (!upd.rowCount) await c.query(`INSERT INTO auth_identities (user_id,provider,password_hash) VALUES ($1,'password',$2)`, [p.user_id, hash]);
+      } else {
+        const uid = await createPartnerUser(c, { email, password, name: p.name });
+        await c.query(`UPDATE partners SET email=COALESCE(email,$1), user_id=$2 WHERE id=$3`, [email, uid, p.id]);
+      }
+      await c.query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'partner.access','partners',$2,$3,$4)`,
+        [req.user.id, p.id, req.ip, JSON.stringify({ email })]).catch(() => {});
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e?.code === '23505') return res.status(409).json({ error: 'email_in_use' });
+    next(e);
+  }
 });
 router.patch('/partners/:id', requireAdmin, async (req, res, next) => {
   try {

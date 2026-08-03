@@ -4,18 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Latido · Consola de Administración</title>
-  <link rel="stylesheet" href="admin.css?v=3" />
+  <title>Latido · Portal del Socio</title>
+  <link rel="stylesheet" href="/admin/admin.css?v=3" />
 </head>
 <body>
-
   <!-- ============ LOGIN ============ -->
   <div id="login">
     <form class="login-card" id="loginForm">
-      <div class="logo">Latido · Admin</div>
-      <div class="sub">Consola de administración y moderación</div>
+      <div class="logo">Latido · Socios</div>
+      <div class="sub">Portal de socios · finanzas y participación</div>
       <label class="lbl" for="email">Correo</label>
-      <input class="field" id="email" type="email" placeholder="admin@latido.co" autocomplete="username" />
+      <input class="field" id="email" type="email" placeholder="socio@ejemplo.com" autocomplete="username" />
       <label class="lbl" for="pass">Contraseña</label>
       <input class="field" id="pass" type="password" placeholder="••••••••" autocomplete="current-password" />
       <input class="field hidden" id="totp" inputmode="numeric" maxlength="6" placeholder="Código 2FA" autocomplete="one-time-code" />
@@ -27,19 +26,12 @@
   <!-- ============ APP ============ -->
   <div id="app" class="hidden">
     <aside class="sidebar">
-      <div class="brand">Latido <span>Admin</span></div>
+      <div class="brand">Latido <span>Socios</span></div>
       <nav id="nav">
-        <div class="nav-item on" data-nav="dashboard"><span class="ic">▦</span> Dashboard</div>
-        <div class="nav-item" data-nav="ingresos"><span class="ic">📈</span> Ingresos</div>
-        <div class="nav-item" data-nav="socios"><span class="ic">🤝</span> Socios</div>
-        <div class="nav-item" data-nav="finanzas"><span class="ic">💳</span> Finanzas</div>
-        <div class="nav-item" data-nav="envivo"><span class="ic">🎥</span> En Vivo</div>
-        <div class="nav-item" data-nav="usuarios"><span class="ic">👥</span> Usuarios</div>
+        <div class="nav-item on" data-nav="panel"><span class="ic">▦</span> Panel</div>
+        <div class="nav-item" data-nav="finanzas"><span class="ic">📈</span> Finanzas</div>
+        <div class="nav-item" data-nav="movimientos"><span class="ic">💰</span> Mis movimientos</div>
         <div class="nav-item" data-nav="kyc"><span class="ic">🪪</span> KYC</div>
-        <div class="nav-item" data-nav="reportes"><span class="ic">🚩</span> Reportes</div>
-        <div class="nav-item" data-nav="moderacion"><span class="ic">🛡️</span> Moderación</div>
-        <div class="nav-item" data-nav="sistema"><span class="ic">🩺</span> Sistema</div>
-        <div class="nav-item" data-nav="config"><span class="ic">⚙️</span> Configuración</div>
         <div class="nav-item" data-nav="auditoria"><span class="ic">📜</span> Auditoría</div>
       </nav>
       <div class="spacer"></div>
@@ -48,7 +40,7 @@
 
     <div class="main">
       <header class="topbar">
-        <h2 id="pageTitle">Dashboard</h2>
+        <h2 id="pageTitle">Panel</h2>
         <button class="btn btn-sm" id="logoutBtn">Salir</button>
       </header>
       <main class="content" id="content"></main>
@@ -56,6 +48,6 @@
   </div>
 
   <div id="toast"></div>
-  <script src="admin.js?v=5"></script>
+  <script src="socio.js?v=1"></script>
 </body>
 </html>

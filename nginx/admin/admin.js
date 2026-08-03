@@ -288,6 +288,7 @@
         <td>${p.is_active ? '<span class="pill ok">Activo</span>' : '<span class="pill bad">Inactivo</span>'}</td>
         <td style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-sm" data-action="editPartner" data-arg="${p.id}">Editar</button>
+          <button class="btn btn-sm" data-action="partnerAccess" data-arg="${p.id}|${p.email || ''}">${p.has_access ? '🔑 Cambiar acceso' : '🔑 Dar acceso'}</button>
           <button class="btn btn-sm" data-action="settlePartner" data-arg="${p.id}|${p.balance_cop}">Consignar</button>
           <button class="btn btn-sm" data-action="togglePartner" data-arg="${p.id}|${p.is_active}">${p.is_active ? 'Desactivar' : 'Activar'}</button>
         </td></tr>`).join('') || '<tr><td colspan="6" class="empty">Sin socios registrados.</td></tr>';
@@ -296,7 +297,8 @@
         <div class="panel-b">
           <div class="form-row"><input class="field" id="pName" placeholder="Nombre" /><input class="field" id="pEmail" placeholder="Correo (opcional)" /></div>
           <div class="form-row"><input class="field" id="pDoc" placeholder="Documento (opcional)" /><input class="field" id="pShare" type="number" placeholder="Peso de participación (ej. 5000)" /></div>
-          <div class="muted" style="font-size:.78rem;margin:4px 0 12px">El "peso" define cómo se reparte entre socios el pool que queda tras tu comisión de administrador. Ej.: dos socios con 6000 y 4000 → 60% y 40% del pool.</div>
+          <div class="form-row"><input class="field" id="pPass" type="password" placeholder="Contraseña de acceso al portal /socio (opcional, mín. 8)" /></div>
+          <div class="muted" style="font-size:.78rem;margin:4px 0 12px">El "peso" define cómo se reparte entre socios el pool que queda tras tu comisión de administrador (ej.: 6000 y 4000 → 60% y 40%). Si pones <b>correo + contraseña</b>, el socio podrá entrar a <b>camstudio.tech/socio/</b>.</div>
           <button class="btn btn-primary" data-action="savePartner">Registrar socio</button>
         </div>
       </div>
@@ -306,9 +308,19 @@
   };
   async function savePartner() {
     const name = $('pName').value.trim(); if (!name) { toast('El nombre es requerido'); return; }
+    const pass = $('pPass').value;
     const body = { name, email: $('pEmail').value.trim(), document: $('pDoc').value.trim(), shareBps: Number($('pShare').value) || 0 };
+    if (pass) { if (pass.length < 8) { toast('La contraseña debe tener al menos 8 caracteres'); return; } body.password = pass; }
     try { await api('/admin/partners', { method: 'POST', body }); toast('Socio registrado ✓'); RENDER.socios(); }
-    catch (e) { toast('Error: ' + e.message); }
+    catch (e) { toast(e.data?.error === 'email_in_use' ? 'Ese correo ya está en uso' : 'Error: ' + e.message); }
+  }
+  async function partnerAccess(arg) {
+    const [id, curEmail] = arg.split('|');
+    const email = prompt('Correo de acceso del socio:', curEmail || ''); if (!email) return;
+    const password = prompt('Contraseña (mín. 8 caracteres):'); if (!password) return;
+    if (password.length < 8) { toast('La contraseña debe tener al menos 8 caracteres'); return; }
+    try { await api('/admin/partners/' + id + '/access', { method: 'POST', body: { email, password } }); toast('Acceso configurado ✓ (portal /socio/)'); RENDER.socios(); }
+    catch (e) { toast(e.data?.error === 'email_in_use' ? 'Ese correo ya está en uso' : 'Error'); }
   }
   async function editPartner(id) {
     const name = prompt('Nombre del socio (dejar vacío para no cambiar):');
@@ -465,7 +477,7 @@
     openUser: (a) => openUser(a), setStatus: (a) => setStatus(a), setRole: (a) => setRole(a), notifyUser: (a) => notifyUser(a),
     kycDecide: (a) => kycDecide(a), resolveReport: (a) => resolveReport(a), toggleFlag: (a) => toggleFlag(a),
     modUserConvs: (a) => modUserConvs(a), modReadConv: (a) => modReadConv(a),
-    savePartner: () => savePartner(), editPartner: (a) => editPartner(a), settlePartner: (a) => settlePartner(a), togglePartner: (a) => togglePartner(a),
+    savePartner: () => savePartner(), editPartner: (a) => editPartner(a), settlePartner: (a) => settlePartner(a), togglePartner: (a) => togglePartner(a), partnerAccess: (a) => partnerAccess(a),
     saveSetting: (a) => saveSetting(a), ghostJoin: (a) => ghostJoin(a),
   };
   document.addEventListener('click', (e) => {

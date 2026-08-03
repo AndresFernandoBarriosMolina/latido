@@ -8,6 +8,7 @@ import studioRoutes from './studio.routes.js';
 import conversationsRoutes from './conversations.routes.js';
 import paymentsRoutes from './payments.routes.js';
 import liveRoutes from './live.routes.js';
+import partnerRoutes from './partner.routes.js';
 import { config } from '../config/index.js';
 import crypto from 'node:crypto';
 import { authenticate } from '../middleware/auth.js';
@@ -23,6 +24,7 @@ router.use('/studio', studioRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/payments', paymentsRoutes);
 router.use('/live', liveRoutes);
+router.use('/partner', partnerRoutes);
 
 // Credenciales TURN efímeras para WebRTC (use-auth-secret de coturn)
 router.get('/rtc/credentials', authenticate, (req, res) => {

@@ -45,11 +45,16 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_revenue_events_created ON revenue_events(created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_revenue_events_source ON revenue_events(source)`,
   `CREATE INDEX IF NOT EXISTS idx_partner_ledger_partner ON partner_ledger(partner_id, created_at DESC)`,
+  // ---- Cuenta de acceso del socio (portal /socio) ----
+  `ALTER TABLE partners ADD COLUMN IF NOT EXISTS user_id uuid`,
 ];
 
 export async function runMigrations() {
+  // El rol 'partner' se agrega aparte (ADD VALUE tiene reglas propias) y de forma tolerante.
+  try { await query(`ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'partner'`); }
+  catch (e) { console.warn('enum partner:', e.message); }
   for (const sql of STATEMENTS) {
     await query(sql);
   }
-  console.log(`Migraciones aplicadas (${STATEMENTS.length} sentencias idempotentes)`);
+  console.log(`Migraciones aplicadas (${STATEMENTS.length} sentencias + rol partner)`);
 }
