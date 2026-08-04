@@ -8,6 +8,7 @@ import { saveMessage } from '../services/messages.service.js';
 import { sendGift } from '../services/gifts.service.js';
 import { roomToken, privateRoomName, chargePrivateMinute } from '../services/live.service.js';
 import { modelBlocksUser } from '../services/geo.service.js';
+import * as settings from '../services/settings.service.js';
 
 // Limitador simple de eventos por socket (token bucket en memoria). Frena flood
 // de señalización/chat de un cliente comprometido sin tocar Redis por evento.
@@ -87,6 +88,41 @@ export function initSockets(httpServer) {
     await charge();                                   // primer minuto por adelantado
     const interval = setInterval(charge, 60_000);     // luego cada minuto
     privateSessions.set(callId, { modelId, viewerId, interval });
+  }
+
+  // ================= RULETA (emparejamiento aleatorio 1-a-1) =================
+  const roulettePool = new Set();               // modelId disponibles (opt-in con socket vivo)
+  const rouletteBusy = new Set();               // modelId actualmente emparejados
+  const rouletteSessions = new Map();           // userId -> { modelId, previewTimer, interval, room }
+  const recentSeen = new Map();                 // userId -> [modelId,...] (evita repetir seguido)
+
+  async function endRoulette(userId, reason, notifyUser = true) {
+    const s = rouletteSessions.get(userId);
+    if (!s) return;
+    if (s.previewTimer) clearTimeout(s.previewTimer);
+    if (s.interval) clearInterval(s.interval);
+    rouletteSessions.delete(userId);
+    rouletteBusy.delete(s.modelId);
+    io.to(`user:${s.modelId}`).emit('roulette:ended', { reason });
+    if (notifyUser) io.to(`user:${userId}`).emit('roulette:ended', { reason });
+  }
+  function endRouletteByModel(modelId, reason) {
+    for (const [userId, s] of rouletteSessions) { if (s.modelId === modelId) { endRoulette(userId, reason, true); break; } }
+  }
+  function startRouletteBilling(userId, modelId, price, previewSec) {
+    const charge = async () => {
+      if (!price || price <= 0) return;
+      const r = await chargePrivateMinute({ viewerId: userId, modelId, diamonds: price });
+      if (!r.ok) return endRoulette(userId, 'insufficient_funds', true);
+      io.to(`user:${userId}`).emit('roulette:billed', { remaining: r.remaining });
+    };
+    // Vistazo GRATIS (previewSec) y luego cobro por minuto.
+    const previewTimer = setTimeout(async () => {
+      await charge();
+      const s = rouletteSessions.get(userId);
+      if (s) s.interval = setInterval(charge, 60_000);
+    }, Math.max(0, previewSec) * 1000);
+    rouletteSessions.set(userId, { modelId, previewTimer, interval: null });
   }
 
   io.on('connection', async (socket) => {
@@ -289,6 +325,58 @@ export function initSockets(httpServer) {
 
     socket.on('private:end', async ({ callId }) => { await endPrivate(callId, 'ended'); });
 
+    // ================= RULETA =================
+    // La MODELO activa/desactiva su disponibilidad para emparejamiento aleatorio.
+    socket.on('roulette:available', (data, ack) => {
+      if (socket.user.role !== 'model' && socket.user.role !== 'admin') return ack?.({ error: 'not_model' });
+      if (data?.on) roulettePool.add(uid);
+      else { roulettePool.delete(uid); endRouletteByModel(uid, 'model_left'); }
+      ack?.({ ok: true, on: roulettePool.has(uid) });
+    });
+
+    // El USUARIO pide una modelo aleatoria (o salta a la siguiente).
+    socket.on('roulette:next', async (_data, ack) => {
+      try {
+        await endRoulette(uid, 'next', false);      // termina el match actual sin avisar al propio usuario
+        // Exclusiones: en privado (sesiones activas en memoria), ya emparejadas, y vistas recientes.
+        const inPrivate = new Set([...privateSessions.values()].map((s) => s.modelId));
+        const recent = recentSeen.get(uid) || [];
+        let candidates = [...roulettePool].filter((m) => m !== uid && !rouletteBusy.has(m) && !inPrivate.has(m) && !recent.includes(m));
+        if (!candidates.length) candidates = [...roulettePool].filter((m) => m !== uid && !rouletteBusy.has(m) && !inPrivate.has(m));
+        if (!candidates.length) return ack?.({ error: 'no_models' });
+        const modelId = candidates[Math.floor(Math.random() * candidates.length)];
+
+        const mp = (await query(`SELECT call_price_diamonds, accepts_calls, published FROM model_profiles WHERE user_id=$1`, [modelId])).rows[0];
+        if (!mp || !mp.published || !mp.accepts_calls) { roulettePool.delete(modelId); return ack?.({ error: 'unavailable' }); }
+        if (await modelBlocksUser(modelId, uid)) return ack?.({ error: 'blocked' });
+        const price = mp.call_price_diamonds || settings.getNum('roulette_price_diamonds', 10);
+        const w = (await query(`SELECT diamonds FROM wallets WHERE user_id=$1`, [uid])).rows[0];
+        if ((Number(w?.diamonds) || 0) < price) return ack?.({ error: 'insufficient_diamonds', price });
+
+        rouletteBusy.add(modelId);
+        const room = `roulette_${modelId}_${uid}`;
+        const [modelToken, userToken] = await Promise.all([
+          roomToken({ identity: modelId, room, canPublish: true }),
+          roomToken({ identity: uid, room, canPublish: true }),
+        ]);
+        const info = (await query(`SELECT p.display_name, mp.handle, p.avatar_key FROM model_profiles mp LEFT JOIN profiles p ON p.user_id=mp.user_id WHERE mp.user_id=$1`, [modelId])).rows[0] || {};
+        let fanName = 'Un fan';
+        try { fanName = (await query(`SELECT display_name FROM profiles WHERE user_id=$1`, [uid])).rows[0]?.display_name || 'Un fan'; } catch {}
+        const rs = recentSeen.get(uid) || []; rs.push(modelId); while (rs.length > 8) rs.shift(); recentSeen.set(uid, rs);
+
+        const previewSec = settings.getNum('roulette_preview_seconds', 20);
+        startRouletteBilling(uid, modelId, price, previewSec);
+        io.to(`user:${modelId}`).emit('roulette:incoming', { url: config.livekit.url, token: modelToken, room, fanName, price });
+        ack?.({ ok: true, url: config.livekit.url, token: userToken, room, price, previewSec, model: { name: info.display_name || 'Creadora', handle: info.handle || '' } });
+      } catch (e) { ack?.({ error: e.message || 'roulette_failed' }); }
+    });
+
+    // Terminar la ruleta (el usuario sale, o la modelo corta su lado).
+    socket.on('roulette:end', async () => {
+      if (rouletteSessions.has(uid)) return endRoulette(uid, 'ended', false);   // el usuario sale
+      endRouletteByModel(uid, 'model_left');                                    // la modelo corta
+    });
+
     // Chat PRIVADO (solo entre los dos participantes de la sala).
     socket.on('private:chat', ({ callId, text }, ack) => {
       const s = privateSessions.get(callId);
@@ -311,6 +399,10 @@ export function initSockets(httpServer) {
     });
 
     socket.on('disconnect', async () => {
+      // Limpieza de ruleta: si era una modelo disponible/emparejada, o un usuario en match.
+      roulettePool.delete(uid);
+      endRouletteByModel(uid, 'model_left');
+      if (rouletteSessions.has(uid)) endRoulette(uid, 'disconnect', false);
       await presence.set(uid, 'offline', 5);
       socket.broadcast.emit('presence', { userId: uid, status: 'offline' });
     });

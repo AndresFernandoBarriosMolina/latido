@@ -19,6 +19,8 @@ export const SETTING_DEFAULTS = {
   signup_bonus_diamonds:   { value: 0,    description: 'Diamantes de regalo al registrarse un fan nuevo.' },
   min_call_price_diamonds: { value: 0,    description: 'Precio mínimo por minuto de sala privada (💎).' },
   max_call_price_diamonds: { value: 100000, description: 'Precio máximo por minuto de sala privada (💎).' },
+  roulette_preview_seconds: { value: 20,  description: 'Ruleta: segundos de vistazo GRATIS con cada modelo antes de empezar a cobrar por minuto.' },
+  roulette_price_diamonds: { value: 10,   description: 'Ruleta: precio por minuto (💎) si la modelo no tiene precio propio de llamada.' },
   platform_name:           { value: 'Latido - CamStudio', description: 'Nombre/marca del sitio.' },
   support_email:           { value: '', description: 'Correo de soporte/contacto mostrado a usuarios.' },
 };
