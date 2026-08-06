@@ -90,6 +90,8 @@ router.get('/users/:id', requireStaff, async (req, res, next) => {
               w.diamonds, w.earnings_cop,
               (SELECT json_agg(row_to_json(k)) FROM kyc_verifications k WHERE k.user_id=u.id) AS kyc,
               (SELECT count(*)::int FROM subscriptions s WHERE s.subscriber_id=u.id AND s.status='active') AS active_subs,
+              (SELECT count(*)::int FROM subscriptions s WHERE s.model_id=u.id AND s.status='active') AS active_subscribers,
+              u.deleted_at,
               (SELECT COALESCE(sum(amount_cop),0)::bigint FROM payments WHERE user_id=u.id AND status='approved') AS total_paid_cop
          FROM users u
          LEFT JOIN profiles p ON p.user_id=u.id
@@ -168,6 +170,99 @@ router.post('/users/:id/credit', requireAdmin, async (req, res, next) => {
     });
     res.json({ ok: true, diamonds: Number(bal) });
   } catch (e) { if (e?.name === 'ZodError') return res.status(400).json({ error: 'invalid' }); next(e); }
+});
+
+// Ajuste de billetera (💎 y ganancias COP), positivo o negativo — soporte/PQRS.
+router.post('/users/:id/wallet', requireAdmin, async (req, res, next) => {
+  try {
+    const dDelta = Math.trunc(Number(req.body?.diamondsDelta) || 0);
+    const eDelta = Math.trunc(Number(req.body?.earningsDelta) || 0);
+    if (!dDelta && !eDelta) return res.status(400).json({ error: 'nothing_to_change' });
+    const memo = String(req.body?.memo || 'Ajuste administrativo').slice(0, 120);
+    const uid = req.params.id;
+    if (!(await query(`SELECT 1 FROM users WHERE id=$1`, [uid])).rows[0]) return res.status(404).json({ error: 'user_not_found' });
+    const out = await withTx(async (c) => {
+      await c.query(`INSERT INTO wallets (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`, [uid]);
+      const w = (await c.query(
+        `UPDATE wallets SET diamonds=diamonds+$1, earnings_cop=earnings_cop+$2, updated_at=now()
+          WHERE user_id=$3 RETURNING diamonds, earnings_cop`, [dDelta, eDelta, uid])).rows[0];
+      if (dDelta) await c.query(`INSERT INTO wallet_ledger (user_id,kind,diamonds_delta,balance_diamonds,ref_type,memo) VALUES ($1,'adjustment',$2,$3,'admin_adjust',$4)`,
+        [uid, dDelta, Number(w.diamonds), memo]);
+      if (eDelta) await c.query(`INSERT INTO wallet_ledger (user_id,kind,cop_delta,ref_type,memo) VALUES ($1,'adjustment',$2,'admin_adjust',$3)`,
+        [uid, eDelta, memo]);
+      await c.query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'wallet.adjust','users',$2,$3,$4)`,
+        [req.user.id, uid, req.ip, JSON.stringify({ dDelta, eDelta, memo })]);
+      return w;
+    });
+    res.json({ ok: true, diamonds: Number(out.diamonds), earningsCop: Number(out.earnings_cop) });
+  } catch (e) {
+    if (e?.code === '23514') return res.status(400).json({ error: 'would_go_negative' });
+    next(e);
+  }
+});
+
+// Historial de pagos del usuario.
+router.get('/users/:id/payments', requireStaff, async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, purpose, amount_cop, method, status, gateway, reference, created_at, paid_at
+         FROM payments WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`, [req.params.id]);
+    res.json({ items: rows });
+  } catch (e) { next(e); }
+});
+
+// Suscripciones: como fan (a modelos) y como modelo (sus suscriptores).
+router.get('/users/:id/subscriptions', requireStaff, async (req, res, next) => {
+  try {
+    const asSubscriber = (await query(
+      `SELECT s.id, s.status, s.price_cop, s.current_period_end, s.auto_renew, s.cancelled_at,
+              COALESCE(p.display_name, mp.handle) AS model_name
+         FROM subscriptions s
+         LEFT JOIN profiles p ON p.user_id=s.model_id
+         LEFT JOIN model_profiles mp ON mp.user_id=s.model_id
+        WHERE s.subscriber_id=$1 ORDER BY s.created_at DESC LIMIT 100`, [req.params.id])).rows;
+    const asModel = (await query(
+      `SELECT s.id, s.status, s.price_cop, s.current_period_end, s.auto_renew,
+              p.display_name AS subscriber_name
+         FROM subscriptions s LEFT JOIN profiles p ON p.user_id=s.subscriber_id
+        WHERE s.model_id=$1 ORDER BY s.created_at DESC LIMIT 100`, [req.params.id])).rows;
+    res.json({ asSubscriber, asModel });
+  } catch (e) { next(e); }
+});
+
+// Cancelar una suscripción activa (soporte/PQRS).
+router.post('/subscriptions/:id/cancel', requireAdmin, async (req, res, next) => {
+  try {
+    const r = await query(
+      `UPDATE subscriptions SET status='cancelled', auto_renew=false, cancelled_at=now()
+        WHERE id=$1 AND status='active' RETURNING id`, [req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'not_found_or_inactive' });
+    await query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'subscription.cancel','subscriptions',$2,$3,'{}')`,
+      [req.user.id, req.params.id, req.ip]).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Eliminar (anonimizar + desactivar) una cuenta — Habeas Data / PQRS.
+router.delete('/users/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const uid = req.params.id;
+    const target = (await query(`SELECT role FROM users WHERE id=$1`, [uid])).rows[0];
+    if (!target) return res.status(404).json({ error: 'not_found' });
+    if (target.role === 'admin') return res.status(403).json({ error: 'cannot_delete_admin' });
+    if (uid === req.user.id) return res.status(403).json({ error: 'cannot_delete_self' });
+    await withTx(async (c) => {
+      const anon = `deleted_${String(uid).slice(0, 8)}@deleted.local`;
+      await c.query(`UPDATE users SET status='banned', deleted_at=now(), email=$2, phone=NULL, email_verified=false, phone_verified=false WHERE id=$1`, [uid, anon]);
+      await c.query(`UPDATE profiles SET display_name='Cuenta eliminada', bio=NULL, avatar_key=NULL, city=NULL, interests=NULL WHERE user_id=$1`, [uid]);
+      await c.query(`UPDATE model_profiles SET is_live=false, published=false WHERE user_id=$1`, [uid]);
+      await c.query(`UPDATE subscriptions SET status='cancelled', auto_renew=false, cancelled_at=now() WHERE subscriber_id=$1 AND status='active'`, [uid]);
+      await c.query(`UPDATE sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, [uid]);
+      await c.query(`INSERT INTO audit_log (actor_id,action,entity,entity_id,ip,meta) VALUES ($1,'user.delete','users',$2,$3,$4)`,
+        [req.user.id, uid, req.ip, JSON.stringify({ anonymized: true })]);
+    });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
 });
 
 // Enviar notificación a usuario

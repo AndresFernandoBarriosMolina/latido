@@ -124,13 +124,23 @@
   async function openUser(id) {
     const c = $('content'); c.innerHTML = spin();
     try {
-      const u = await api('/admin/users/' + id); state.activeUser = u;
-      const roleOpts = ['user', 'model', 'moderator', 'admin'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('');
+      const [u, subs, pays] = await Promise.all([
+        api('/admin/users/' + id),
+        api('/admin/users/' + id + '/subscriptions').catch(() => ({ asSubscriber: [], asModel: [] })),
+        api('/admin/users/' + id + '/payments').catch(() => ({ items: [] })),
+      ]);
+      state.activeUser = u;
+      const roleOpts = ['user', 'model', 'moderator', 'admin', 'partner'].map((r) => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('');
+      const deleted = u.deleted_at ? '<span class="pill bad">CUENTA ELIMINADA</span>' : '';
+      const subsFan = (subs.asSubscriber || []).map((s) => `<tr><td>${esc(s.model_name || '—')}</td><td><span class="badge">${esc(s.status)}</span></td><td>${cop(s.price_cop)}</td><td class="muted">${dt(s.current_period_end)}</td><td>${s.status === 'active' ? `<button class="btn btn-danger btn-sm" data-action="cancelSub" data-arg="${s.id}|${u.id}">Cancelar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No está suscrito a ninguna creadora.</td></tr>';
+      const subsModel = (subs.asModel || []).map((s) => `<tr><td>${esc(s.subscriber_name || '—')}</td><td><span class="badge">${esc(s.status)}</span></td><td>${cop(s.price_cop)}</td><td class="muted">${dt(s.current_period_end)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No tiene suscriptores.</td></tr>';
+      const payRows = (pays.items || []).map((p) => `<tr><td>${esc(p.purpose)}</td><td>${cop(p.amount_cop)}</td><td class="muted">${esc(p.method || '')}</td><td><span class="badge">${esc(p.status)}</span></td><td class="muted">${dt(p.created_at)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Sin pagos registrados.</td></tr>';
+      const isModel = u.role === 'model';
       c.innerHTML = `<button class="btn btn-sm" data-action="go" data-arg="usuarios">← Usuarios</button>
-        <div class="panel" style="margin-top:14px"><div class="panel-h"><span>${esc(u.display_name || u.email)}</span><span class="badge b-${esc(u.status)}">${esc(u.status)}</span></div>
+        <div class="panel" style="margin-top:14px"><div class="panel-h"><span>${esc(u.display_name || u.email)} ${deleted}</span><span class="badge b-${esc(u.status)}">${esc(u.status)}</span></div>
           <div class="panel-b">
-            <div class="row" style="border:none;padding:0 0 14px"><div class="av">${letter(u.display_name || u.email)}</div>
-              <div><div><b>${esc(u.display_name || '—')}</b></div><div class="muted">${esc(u.email || u.phone || '')} · ${esc(u.role)} · id ${esc(String(u.id).slice(0, 8))}</div></div></div>
+            <div class="row" style="border:none;padding:0 0 12px"><div class="av">${letter(u.display_name || u.email)}</div>
+              <div><div><b>${esc(u.display_name || '—')}</b></div><div class="muted">${esc(u.email || u.phone || '')} · rol <b>${esc(u.role)}</b> · id ${esc(String(u.id).slice(0, 8))} · registro ${dt(u.created_at)}</div></div></div>
             <div class="toolbar">
               <select class="field" id="roleSel" style="width:auto;margin:0">${roleOpts}</select>
               <button class="btn btn-sm" data-action="setRole" data-arg="${u.id}">Cambiar rol</button>
@@ -138,9 +148,59 @@
               <button class="btn btn-warn btn-sm" data-action="setStatus" data-arg="${u.id}|suspended">Suspender</button>
               <button class="btn btn-danger btn-sm" data-action="setStatus" data-arg="${u.id}|banned">Banear</button>
             </div>
-            <div class="toolbar"><input class="field" id="notifMsg" placeholder="Enviar notificación al usuario…" style="flex:1;margin:0" /><button class="btn btn-sm" data-action="notifyUser" data-arg="${u.id}">Enviar</button></div>
-          </div></div>`;
+            <div class="toolbar" style="margin-top:8px"><input class="field" id="notifMsg" placeholder="Enviar notificación al usuario…" style="flex:1;margin:0" /><button class="btn btn-sm" data-action="notifyUser" data-arg="${u.id}">Enviar</button></div>
+          </div></div>
+
+        <div class="panel"><div class="panel-h">Billetera</div><div class="panel-b">
+          <div class="kpi-grid" style="margin-bottom:14px">
+            <div class="kpi"><div class="v">${num(u.diamonds || 0)} 💎</div><div class="l">Saldo (diamantes)</div></div>
+            <div class="kpi"><div class="v">${cop(u.earnings_cop)}</div><div class="l">Ganancias (COP)</div></div>
+            <div class="kpi"><div class="v">${cop(u.total_paid_cop)}</div><div class="l">Total pagado</div></div>
+          </div>
+          <div class="muted" style="font-size:.78rem;margin-bottom:6px">Ajuste manual (usa negativos para descontar). Queda auditado.</div>
+          <div class="form-row">
+            <input class="field" id="wDia" type="number" placeholder="Δ diamantes (ej. 100 o -50)" />
+            <input class="field" id="wEarn" type="number" placeholder="Δ ganancias COP (ej. 5000 o -1000)" />
+          </div>
+          <div class="form-row"><input class="field" id="wMemo" placeholder="Motivo del ajuste (PQRS/reclamación)" /></div>
+          <button class="btn btn-primary btn-sm" data-action="adjustWallet" data-arg="${u.id}">Aplicar ajuste</button>
+        </div></div>
+
+        <div class="panel"><div class="panel-h">Suscripciones (como fan)</div>
+          <table><thead><tr><th>Creadora</th><th>Estado</th><th>Precio</th><th>Vence</th><th></th></tr></thead><tbody>${subsFan}</tbody></table></div>
+
+        ${isModel ? `<div class="panel"><div class="panel-h">Suscriptores (${num(u.active_subscribers || 0)} activos)</div>
+          <table><thead><tr><th>Fan</th><th>Estado</th><th>Precio</th><th>Vence</th></tr></thead><tbody>${subsModel}</tbody></table></div>` : ''}
+
+        <div class="panel"><div class="panel-h">Historial de pagos</div>
+          <table><thead><tr><th>Concepto</th><th>Monto</th><th>Método</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>${payRows}</tbody></table></div>
+
+        <div class="panel" style="border-color:var(--danger)"><div class="panel-h" style="color:var(--danger)">Zona peligrosa</div><div class="panel-b">
+          <div class="muted" style="font-size:.82rem;margin-bottom:10px">Eliminar la cuenta anonimiza sus datos personales (Habeas Data), la desactiva y cancela sus suscripciones. Los registros financieros se conservan para contabilidad. Acción auditada.</div>
+          <button class="btn btn-danger btn-sm" data-action="deleteUser" data-arg="${u.id}" ${u.deleted_at ? 'disabled' : ''}>🗑 Eliminar cuenta</button>
+        </div></div>`;
     } catch (e) { c.innerHTML = `<div class="empty">Error (${esc(e.message)}).</div>`; }
+  }
+  async function adjustWallet(id) {
+    const d = Number($('wDia') && $('wDia').value) || 0;
+    const e = Number($('wEarn') && $('wEarn').value) || 0;
+    const memo = ($('wMemo') && $('wMemo').value.trim()) || '';
+    if (!d && !e) { toast('Indica un ajuste de 💎 o de ganancias'); return; }
+    if (!confirm(`¿Aplicar ajuste?  Δ💎 ${d} · Δ COP ${e}`)) return;
+    try { const r = await api('/admin/users/' + id + '/wallet', { method: 'POST', body: { diamondsDelta: d, earningsDelta: e, memo } }); toast('Billetera actualizada ✓'); openUser(id); }
+    catch (err) { toast(err.data?.error === 'would_go_negative' ? 'El saldo no puede quedar negativo' : 'Error'); }
+  }
+  async function cancelSub(arg) {
+    const [subId, userId] = arg.split('|');
+    if (!confirm('¿Cancelar esta suscripción?')) return;
+    try { await api('/admin/subscriptions/' + subId + '/cancel', { method: 'POST', body: {} }); toast('Suscripción cancelada ✓'); openUser(userId); }
+    catch { toast('Error'); }
+  }
+  async function deleteUser(id) {
+    if (!confirm('¿ELIMINAR esta cuenta? Se anonimizan sus datos y se desactiva. Esta acción no se revierte fácilmente.')) return;
+    if (!confirm('Confirma una vez más: se eliminará (anonimizará) la cuenta.')) return;
+    try { await api('/admin/users/' + id, { method: 'DELETE' }); toast('Cuenta eliminada ✓'); navigate('usuarios'); }
+    catch (e) { toast(e.data?.error === 'cannot_delete_admin' ? 'No se puede eliminar un admin' : 'Error'); }
   }
   async function setStatus(arg) {
     const [id, status] = arg.split('|'); const reason = prompt(`Motivo para "${status}" (queda auditado):`) || '';
@@ -475,6 +535,7 @@
     go: (a) => navigate(a),
     approvePayout: (a) => approvePayout(a),
     openUser: (a) => openUser(a), setStatus: (a) => setStatus(a), setRole: (a) => setRole(a), notifyUser: (a) => notifyUser(a),
+    adjustWallet: (a) => adjustWallet(a), cancelSub: (a) => cancelSub(a), deleteUser: (a) => deleteUser(a),
     kycDecide: (a) => kycDecide(a), resolveReport: (a) => resolveReport(a), toggleFlag: (a) => toggleFlag(a),
     modUserConvs: (a) => modUserConvs(a), modReadConv: (a) => modReadConv(a),
     savePartner: () => savePartner(), editPartner: (a) => editPartner(a), settlePartner: (a) => settlePartner(a), togglePartner: (a) => togglePartner(a), partnerAccess: (a) => partnerAccess(a),

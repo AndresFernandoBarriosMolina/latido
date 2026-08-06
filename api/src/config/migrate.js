@@ -47,6 +47,8 @@ const STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_partner_ledger_partner ON partner_ledger(partner_id, created_at DESC)`,
   // ---- Cuenta de acceso del socio (portal /socio) ----
   `ALTER TABLE partners ADD COLUMN IF NOT EXISTS user_id uuid`,
+  // ---- Eliminación/anonimización de cuenta (PQRS / Habeas Data) ----
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
 ];
 
 export async function runMigrations() {
