@@ -443,6 +443,10 @@
   function connectSocket() {
     if (socket || !window.io) return;
     try { socket = window.io({ auth: { token: tok.get() } }); } catch { return; }
+    // Al (re)conectar —tras un deploy, un blip de red o reconexión de LiveKit— el
+    // servidor pierde el pool de ruleta en memoria. Re-anunciamos disponibilidad
+    // para no quedar "fantasma" (el botón en ON pero el server sin registrarnos).
+    socket.on('connect', () => { if (rouletteOn) { try { socket.emit('roulette:available', { on: true }); } catch {} } });
     socket.on('live:gift', (g) => {
       const feed = $('giftFeed'); if (feed) { if (feed.querySelector('.muted')) feed.innerHTML = '';
         const d = document.createElement('div'); d.className = 'g'; d.innerHTML = `<span style="font-size:1.3rem">${g.emoji}</span> <b>${esc(g.name)}</b> <span class="muted">· 💎${g.cost}</span>`;
