@@ -582,6 +582,13 @@ function connectSocket() {
   socket.on('private:billed', (d) => { if (currentUser) { currentUser.diamonds = d.remaining; updateAuthUI(); } });
   socket.on('private:chat', (m) => { if (privateCallId && m.from !== (currentUser && currentUser.id)) appendLiveChat('Creadora', m.text, false); });
   socket.on('private:gift', (g) => { if (privateCallId) { flyGift(g.emoji); appendLiveChat('🎁', `enviaste ${g.emoji} ${g.name}`, true); } });
+  // ---- Ruleta ----
+  socket.on('roulette:billed', (d) => { if (currentUser) { currentUser.diamonds = d.remaining; updateAuthUI(); } const b = $('rltBal'); if (b) b.textContent = d.remaining; });
+  socket.on('roulette:ended', (d) => {
+    if (!rltActive) return;
+    if (d && d.reason === 'insufficient_funds') { toast('Se acabaron tus 💎'); rouletteExit(); go('wallet'); }
+    else { toast('La creadora terminó · buscando otra…'); rouletteNext(); }
+  });
   socket.on('connect_error', () => {});
 }
 function disconnectSocket() { if (socket) { try { socket.disconnect(); } catch {} socket = null; } }
@@ -1389,8 +1396,68 @@ function toggleTheme() { applyTheme(!document.body.classList.contains('light'));
 /* ==========================================================================
  *  DELEGACIÓN DE EVENTOS (sin handlers inline — compatible con CSP estricto)
  * ======================================================================== */
+/* ---- Ruleta (emparejamiento aleatorio 1-a-1) ---- */
+let rltRoom = null, rltActive = false, rltTimerInt = null, rltStartTs = 0, rltPreviewSec = 0, rltPrice = 0;
+function rouletteOpen() {
+  if (!isAuthed) { requireAuth(); return; }
+  if (!window.LivekitClient) { toast('El módulo de video no cargó'); return; }
+  if (!socket) connectSocket();
+  rltActive = true;
+  $('roulette').style.display = 'flex';
+  rouletteNext();
+}
+function rltShowStatus(msg) { const s = $('rltStatus'); if (s) { s.textContent = msg; s.style.display = msg ? 'flex' : 'none'; } }
+function clearRltTimers() { if (rltTimerInt) { clearInterval(rltTimerInt); rltTimerInt = null; } }
+function rouletteNext() {
+  if (!socket) { toast('Conexión no lista'); return; }
+  if (rltRoom) { try { rltRoom.disconnect(); } catch {} rltRoom = null; }
+  clearRltTimers();
+  rltShowStatus('🎲 Buscando creadora…');
+  if ($('rltBadge')) $('rltBadge').textContent = '🎲 Ruleta';
+  if ($('rltTimer')) $('rltTimer').textContent = '';
+  socket.emit('roulette:next', {}, (ack) => {
+    if (ack && ack.ok) enterRoulette(ack);
+    else if (ack && ack.error === 'no_models') rltShowStatus('No hay creadoras disponibles ahora. Intenta más tarde.');
+    else if (ack && ack.error === 'insufficient_diamonds') { toast(`Necesitas ${ack.price}💎 para la ruleta.`); rouletteExit(); go('wallet'); }
+    else rltShowStatus('No se pudo emparejar. Toca "Siguiente" para reintentar.');
+  });
+}
+async function enterRoulette(m) {
+  if ($('rltName')) $('rltName').textContent = (m.model && m.model.name) || 'Creadora';
+  if ($('rltBal') && currentUser) $('rltBal').textContent = currentUser.diamonds != null ? currentUser.diamonds : '';
+  rltPreviewSec = m.previewSec || 0; rltPrice = m.price || 0;
+  try {
+    rltRoom = new LivekitClient.Room({ adaptiveStream: true });
+    rltRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => { if (track.kind === 'video' || track.kind === 'audio') track.attach($('rltVideo')); });
+    await rltRoom.connect(m.url, m.token);
+    rltShowStatus('');
+    startRltTimer();
+  } catch (e) { rltShowStatus('No se pudo conectar el video. Toca "Siguiente".'); }
+}
+function startRltTimer() {
+  rltStartTs = Date.now();
+  const tick = () => {
+    const s = Math.floor((Date.now() - rltStartTs) / 1000);
+    const badge = $('rltBadge'), tm = $('rltTimer');
+    if (badge) {
+      if (s < rltPreviewSec) { badge.textContent = '👀 Vistazo gratis ' + (rltPreviewSec - s) + 's'; badge.style.background = '#16a34a'; }
+      else { badge.textContent = '💎 ' + rltPrice + '/min'; badge.style.background = 'var(--grad)'; }
+    }
+    if (tm) tm.textContent = '⏱ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  };
+  tick(); rltTimerInt = setInterval(tick, 1000);
+}
+function rouletteExit() {
+  rltActive = false;
+  if (socket) socket.emit('roulette:end', {});
+  if (rltRoom) { try { rltRoom.disconnect(); } catch {} rltRoom = null; }
+  clearRltTimers();
+  $('roulette').style.display = 'none';
+}
+
 const ACTIONS = {
   go: (a) => go(a),
+  rouletteOpen: () => rouletteOpen(), rltNext: () => rouletteNext(), rltExit: () => rouletteExit(),
   openModel: (a) => openModel(a),
   openConv: (a) => openConv(a),
   chatModel: () => chatWithCurrentModel(),

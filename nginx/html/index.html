@@ -829,7 +829,7 @@
   <div class="nav" id="nav" style="display:none">
     <button data-v="home" class="on" data-act="go" data-arg="home">🔥<span>Explorar</span></button>
     <button data-v="wallet" data-act="go" data-arg="wallet">💎<span>Billetera</span></button>
-    <button class="fab pwa-hidden-feat" data-act="startCall" aria-label="Videollamada"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" width="26" height="26"><path d="M16 8.5l5-3v13l-5-3"/><rect x="2" y="5" width="14" height="14" rx="3"/></svg></button>
+    <button class="fab" data-act="rouletteOpen" aria-label="Ruleta" style="font-size:1.5rem">🎲</button>
     <button data-v="chats" data-act="go" data-arg="chats" class="pwa-hidden-feat">💬<span>Chats</span></button>
     <button data-v="profile" data-act="go" data-arg="profile">👤<span>Perfil</span></button>
     <button data-v="admin" id="navAdmin" style="display:none" data-act="go" data-arg="admin">⚙️<span>Admin</span></button>
@@ -919,10 +919,23 @@
   </div>
 </div>
 
+<!-- ============ RULETA (emparejamiento aleatorio) ============ -->
+<div id="roulette" style="display:none;position:fixed;inset:0;z-index:1060;background:#000;flex-direction:column">
+  <video id="rltVideo" autoplay playsinline style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000"></video>
+  <div style="position:absolute;top:0;left:0;right:0;padding:16px;display:flex;justify-content:space-between;align-items:center;gap:8px;background:linear-gradient(rgba(0,0,0,.6),transparent);color:#fff;z-index:2">
+    <div style="display:flex;align-items:center;gap:8px"><b id="rltName">Ruleta</b><span id="rltBadge" style="padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;background:#16a34a">🎲 Ruleta</span></div>
+    <div style="font-size:.85rem"><span id="rltTimer"></span> · 💎 <b id="rltBal">0</b></div>
+  </div>
+  <div id="rltStatus" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;text-align:center;padding:24px;z-index:1"></div>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:16px;display:flex;gap:10px;background:linear-gradient(transparent,rgba(0,0,0,.6));z-index:3">
+    <button class="btn" data-act="rltExit" style="flex:1;background:rgba(255,255,255,.16);color:#fff;border:none;border-radius:24px;padding:13px;font-weight:700;cursor:pointer">✕ Salir</button>
+    <button class="btn" data-act="rltNext" style="flex:2;background:var(--grad);color:#fff;border:none;border-radius:24px;padding:13px;font-weight:800;cursor:pointer">Siguiente ⏭</button>
+  </div>
+</div>
 <script src="/socket.io/socket.io.js"></script>
 <script src="livekit-client.umd.min.js?v=1"></script>
 <script src="crypto.js"></script>
 <script src="api.js?v=19"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>

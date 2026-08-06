@@ -120,11 +120,12 @@
             <video id="liveSelf" autoplay playsinline muted></video>
             <div class="live-badge hidden" id="liveBadge">● EN VIVO</div>
           </div>
-          <div class="toolbar" style="margin-top:14px">
+          <div class="toolbar" style="margin-top:14px;flex-wrap:wrap">
             <button class="btn btn-grad" data-action="goLiveToggle" id="goLiveBtn">🔴 Ponerme en vivo</button>
+            <button class="btn" data-action="toggleRoulette" id="rltToggleBtn">🎲 Ruleta: OFF</button>
             <span class="muted" style="align-self:center">👁 <b id="viewerCount">0</b> espectadores</span>
           </div>
-          <p class="muted" style="font-size:.82rem">Al ponerte en vivo, tus suscriptores podrán verte, chatear y enviarte regalos. Requiere identidad verificada (KYC).</p>
+          <p class="muted" style="font-size:.82rem">Al ponerte en vivo, tus suscriptores podrán verte, chatear y enviarte regalos. Con <b>Ruleta</b> activada, usuarios te conectan al azar en 1-a-1 (te avisa y conecta sola). Requiere identidad verificada (KYC).</p>
         </div>
         <div class="live-side">
           <div class="card" style="padding:14px"><div class="section-title">Regalos recibidos</div><div class="gift-feed" id="giftFeed"><div class="muted" style="font-size:.82rem">Aún sin regalos.</div></div></div>
@@ -463,8 +464,24 @@
         feed.prepend(d); while (feed.children.length > 40) feed.removeChild(feed.lastChild); }
       privChatAppend('🎁', `te envió ${g.emoji} ${g.name}`, false);
     });
+    // ---- Ruleta: emparejamiento aleatorio (auto-conexión) ----
+    socket.on('roulette:incoming', ({ url, token, price, fanName }) => {
+      rouletteMode = true;
+      const fn = $('privFan'); if (fn) fn.textContent = (fanName || 'Fan') + ' · 🎲 Ruleta';
+      enterPrivateModel(url, token, price);
+      try { navigator.vibrate && navigator.vibrate(200); } catch {}
+    });
+    socket.on('roulette:ended', () => { if (rouletteMode) { teardownPrivateModel(); toast('Ruleta: conexión finalizada'); } });
   }
   function disconnectSocket() { if (socket) { try { socket.disconnect(); } catch {} socket = null; } }
+  let rouletteMode = false, rouletteOn = false;
+  function toggleRoulette() {
+    if (!socket) connectSocket();
+    if (!socket) { toast('Conexión no lista'); return; }
+    const target = !rouletteOn;
+    socket.emit('roulette:available', { on: target }, (a) => { rouletteOn = !!(a && a.on); updateRltToggle(); toast(rouletteOn ? 'Disponible para ruleta 🎲' : 'Ruleta desactivada'); });
+  }
+  function updateRltToggle() { const b = $('rltToggleBtn'); if (b) { b.textContent = rouletteOn ? '🎲 Ruleta: ON' : '🎲 Ruleta: OFF'; b.classList.toggle('btn-grad', rouletteOn); } }
 
   let privModelRoom = null, pendingInvite = null, activePrivCall = null;
   let privCamM = true, privMicM = true, privTimerIntM = null, privStartM = 0;
@@ -510,12 +527,12 @@
   function privSendM() { const i = $('privChatInput'); const t = i && i.value.trim(); if (!t || !socket || !activePrivCall) return; socket.emit('private:chat', { callId: activePrivCall, text: t }, () => {}); privChatAppend('Tú', t, true); i.value = ''; }
   function privChatAppend(who, text, mine) { const box = $('privChatFeed'); if (!box) return; const d = document.createElement('div'); d.className = 'row'; d.innerHTML = `<b style="color:${mine ? '#ff7ab0' : '#7ad0ff'}">${esc(who)}:</b> ${esc(text)}`; box.appendChild(d); box.scrollTop = box.scrollHeight; while (box.children.length > 60) box.removeChild(box.firstChild); }
   function startPrivTimerM() { privStartM = Date.now(); if (privTimerIntM) clearInterval(privTimerIntM); const el = $('privTimerM'); const tick = () => { if (!el) return; const s = Math.floor((Date.now() - privStartM) / 1000); el.textContent = '⏱ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }; tick(); privTimerIntM = setInterval(tick, 1000); }
-  function privEndM() { if (socket && activePrivCall) socket.emit('private:end', { callId: activePrivCall }); teardownPrivateModel(); }
-  function teardownPrivateModel() { if (privModelRoom) { try { privModelRoom.disconnect(); } catch {} privModelRoom = null; } if (privTimerIntM) { clearInterval(privTimerIntM); privTimerIntM = null; } activePrivCall = null; const sv = $('privSelfVideo'); if (sv) sv.srcObject = null; const fv = $('privFanVideo'); if (fv) fv.srcObject = null; $('privOverlay').classList.add('hidden'); }
+  function privEndM() { if (rouletteMode) { if (socket) socket.emit('roulette:end', {}); } else if (socket && activePrivCall) socket.emit('private:end', { callId: activePrivCall }); teardownPrivateModel(); }
+  function teardownPrivateModel() { if (privModelRoom) { try { privModelRoom.disconnect(); } catch {} privModelRoom = null; } if (privTimerIntM) { clearInterval(privTimerIntM); privTimerIntM = null; } activePrivCall = null; rouletteMode = false; const sv = $('privSelfVideo'); if (sv) sv.srcObject = null; const fv = $('privFanVideo'); if (fv) fv.srcObject = null; $('privOverlay').classList.add('hidden'); }
 
   /* ---------- Acciones ---------- */
   const ACT = {
-    go: (a) => navigate(a), goLiveToggle, toggleLive, liveSendChat, toggleNav,
+    go: (a) => navigate(a), goLiveToggle, toggleLive, liveSendChat, toggleNav, toggleRoulette,
     pickFile, pickFileAlbum, pickShowcase, pickAvatar, newAlbum, openAlbum: (a) => openAlbum(a), albumVis, delAlbum,
     toggleItem: (a) => toggleItem(a), toggleVis: (a) => toggleVis(a), unshowcase: (a) => unshowcase(a), delItem: (a) => delItem(a),
     saveProfile, saveCreator, addBlock, removeBlock: (a) => removeBlock(a), saveBlocked,
