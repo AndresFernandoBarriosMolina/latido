@@ -108,6 +108,8 @@ const kycSchema = z.object({
   fullName:       z.string().min(3).max(160).regex(/^[\p{L}\s.'-]+$/u, 'nombre_invalido'),
   documentType:   z.enum(['cc','ce','passport']),
   documentNumber: z.string().min(5).max(20),
+  consentAdult:   z.literal(true),   // consentimiento expreso para contenido adulto (2257)
+  consentData:    z.literal(true),   // tratamiento de datos sensibles (Ley 1581/2012)
 }).superRefine((d, ctx) => {
   const num = d.documentNumber.replace(/[\s.-]/g, '');   // tolera espacios/puntos/guiones
   if (!DOC_FORMATS[d.documentType].test(num))
@@ -134,9 +136,10 @@ router.post('/me/kyc', authenticate, async (req, res, next) => {
     const docHash = createHash('sha256').update(docNorm).digest('hex');
 
     const { rows } = await dbQuery(
-      `INSERT INTO kyc_verifications (user_id,status,full_name,document_type,document_number_hash)
-       VALUES ($1,'submitted',$2,$3,$4) RETURNING id`,
-      [req.user.id, d.fullName, d.documentType, docHash]
+      `INSERT INTO kyc_verifications (user_id,status,full_name,document_type,document_number_hash,
+                                      consent_adult_content,consent_data,consent_version,consent_at,consent_ip)
+       VALUES ($1,'submitted',$2,$3,$4,true,true,'1.0',now(),$5) RETURNING id`,
+      [req.user.id, d.fullName, d.documentType, docHash, req.ip]
     );
     const kycId = rows[0].id;
     await dbQuery(`UPDATE model_profiles SET kyc_status='submitted' WHERE user_id=$1`, [req.user.id]);

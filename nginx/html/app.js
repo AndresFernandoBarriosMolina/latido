@@ -779,16 +779,27 @@ function renderKycForm() {
       <label class="lbl">Tipo de documento</label>
       <select class="field" id="kycType"><option value="cc">Cédula de ciudadanía</option><option value="ce">Cédula de extranjería</option><option value="passport">Pasaporte</option></select>
       <label class="lbl">Número de documento</label><input class="field" id="kycNum" placeholder="Número" />
-      <button class="btn btn-grad" data-act="submitKyc" style="width:100%;margin-top:10px">Enviar verificación</button>
+      <label class="legal" style="display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:14px;font-size:.82rem;color:var(--muted)">
+        <input type="checkbox" id="kycConsentAdult" style="margin-top:3px" />
+        <span>Declaro, de forma <b>libre y voluntaria</b>, que soy <b>mayor de 18 años</b>, que soy la persona del documento, y <b>consiento</b> ser grabada, transmitida y que mi contenido para adultos se muestre en la plataforma.</span>
+      </label>
+      <label class="legal" style="display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:10px;font-size:.82rem;color:var(--muted)">
+        <input type="checkbox" id="kycConsentData" style="margin-top:3px" />
+        <span>Autorizo el tratamiento de mis datos personales y sensibles (<a href="/legal/privacidad.html" target="_blank" rel="noopener">Ley 1581/2012</a>) y acepto el <a href="/legal/creadoras.html" target="_blank" rel="noopener">Consentimiento 2257</a> y los <a href="/legal/terminos.html" target="_blank" rel="noopener">Términos</a>.</span>
+      </label>
+      <button class="btn btn-grad" data-act="submitKyc" style="width:100%;margin-top:14px">Enviar verificación</button>
     </div></div>`;
 }
 async function submitKyc() {
   const fullName = ($('kycName') && $('kycName').value.trim()) || '';
   const documentType = ($('kycType') && $('kycType').value) || 'cc';
   const documentNumber = ($('kycNum') && $('kycNum').value.trim()) || '';
+  const consentAdult = !!($('kycConsentAdult') && $('kycConsentAdult').checked);
+  const consentData = !!($('kycConsentData') && $('kycConsentData').checked);
   if (fullName.length < 3 || documentNumber.length < 5) { toast('Completa nombre y documento'); return; }
+  if (!consentAdult || !consentData) { toast('Debes aceptar el consentimiento y el tratamiento de datos'); return; }
   try {
-    const r = await LatidoAPI.submitKyc({ fullName, documentType, documentNumber });
+    const r = await LatidoAPI.submitKyc({ fullName, documentType, documentNumber, consentAdult, consentData });
     if (r.status === 'approved') { toast('¡Identidad verificada! ✓'); loadStudio(); }
     else if (r.status === 'rejected') { toast('Verificación rechazada: ' + (r.reason || '')); }
     else { toast('Verificación en revisión'); loadStudio(); }

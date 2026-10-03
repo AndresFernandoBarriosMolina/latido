@@ -49,6 +49,12 @@ const STATEMENTS = [
   `ALTER TABLE partners ADD COLUMN IF NOT EXISTS user_id uuid`,
   // ---- Eliminación/anonimización de cuenta (PQRS / Habeas Data) ----
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
+  // ---- Consentimiento expreso de creadoras (cumplimiento 2257 / redes de pago) ----
+  `ALTER TABLE kyc_verifications ADD COLUMN IF NOT EXISTS consent_adult_content boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE kyc_verifications ADD COLUMN IF NOT EXISTS consent_data boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE kyc_verifications ADD COLUMN IF NOT EXISTS consent_version varchar(10)`,
+  `ALTER TABLE kyc_verifications ADD COLUMN IF NOT EXISTS consent_at timestamptz`,
+  `ALTER TABLE kyc_verifications ADD COLUMN IF NOT EXISTS consent_ip varchar(64)`,
 ];
 
 export async function runMigrations() {

@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#120821" />
+<!-- Etiquetado de contenido para adultos (control parental / RTA) -->
+<meta name="rating" content="adult" />
+<meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
 <title>Latido - CamStudio</title>
 <style>
   :root{
@@ -413,9 +416,52 @@
     .content-row{max-width:820px;margin-left:auto;margin-right:auto}
     .th-head{max-width:820px;margin-left:auto;margin-right:auto}
   }
+  #home footer a{color:var(--muted);text-decoration:underline;white-space:nowrap}
+  #home footer a:hover{color:var(--txt)}
+  /* ===== Gate de edad 18+ ===== */
+  html[data-age="ok"] #ageGate{display:none!important}
+  #ageGate{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
+    padding:20px;background:radial-gradient(900px 600px at 50% -10%,#5a1340,#120610 60%);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);overflow:auto}
+  #ageGate .ag-card{max-width:440px;width:100%;background:#1f0b19;border:1px solid #ffffff1f;border-radius:20px;
+    padding:28px 26px;text-align:center;box-shadow:0 30px 70px -20px #000;color:#fbe7f0}
+  #ageGate .ag-brand{font-weight:800;font-size:1.3rem;background:linear-gradient(135deg,#ff1e5a,#b5179e);
+    -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  #ageGate .ag-18{font-weight:900;font-size:2.4rem;letter-spacing:.05em;margin:6px 0 4px;color:#ff5c8a}
+  #ageGate h2{font-size:1.15rem;margin:4px 0 10px}
+  #ageGate p{color:#e9c3d6;font-size:.92rem;line-height:1.55;margin-bottom:10px}
+  #ageGate ul{text-align:left;color:#e9c3d6;font-size:.86rem;line-height:1.5;padding-left:20px;margin-bottom:16px}
+  #ageGate li{margin:5px 0}
+  #ageGate a{color:#ff9bb5}
+  #ageGate .ag-btns{display:flex;flex-direction:column;gap:10px}
+  #ageGate .ag-ok{border:none;border-radius:12px;padding:14px;font-size:1rem;font-weight:700;color:#fff;cursor:pointer;
+    background:linear-gradient(135deg,#ff1e5a,#b5179e)}
+  #ageGate .ag-no{border:1px solid #ffffff2a;background:transparent;color:#c79bb3;border-radius:12px;padding:12px;font-size:.92rem;cursor:pointer}
+  #ageGate .ag-foot{margin-top:16px;font-size:.76rem;color:#a06a82}
 </style>
+<script src="/agegate.js?v=1"></script>
 </head>
 <body>
+
+<!-- ======= GATE DE EDAD 18+ (se oculta vía /agegate.js si ya fue confirmado) ======= -->
+<div id="ageGate" role="dialog" aria-modal="true" aria-label="Verificación de edad">
+  <div class="ag-card">
+    <div class="ag-brand">CamStudio</div>
+    <div class="ag-18">18+</div>
+    <h2>Contenido para adultos</h2>
+    <p>Este sitio contiene material explícito destinado únicamente a <b>personas mayores de 18 años</b>. Al ingresar confirmas, bajo tu responsabilidad, que:</p>
+    <ul>
+      <li>Tienes <b>18 años o más</b> (o la mayoría de edad de tu jurisdicción).</li>
+      <li>Aceptas los <a href="/legal/terminos.html" target="_blank" rel="noopener">Términos</a>, la <a href="/legal/privacidad.html" target="_blank" rel="noopener">Política de Privacidad</a> y las <a href="/legal/contenido.html" target="_blank" rel="noopener">Normas de Contenido</a>.</li>
+      <li>Es legal acceder a este contenido donde te encuentras.</li>
+    </ul>
+    <div class="ag-btns">
+      <button id="ageEnter" type="button" class="ag-ok">Tengo 18 años o más — Entrar</button>
+      <button id="ageLeave" type="button" class="ag-no">Salir</button>
+    </div>
+    <div class="ag-foot">Tenemos tolerancia cero frente al contenido con menores o no consentido. <a href="/legal/menores.html" target="_blank" rel="noopener">Protección de menores</a>.</div>
+  </div>
+</div>
 
 <div class="phone">
   <div class="notch"></div>
@@ -444,11 +490,11 @@
       <input id="authPass"  class="field" type="password" placeholder="Contraseña" autocomplete="current-password" />
       <input id="authBirth" class="field" type="date" style="display:none" />
       <label id="authConsentRow" class="legal" style="display:none;text-align:left">
-        <input type="checkbox" id="authConsent" /> Soy mayor de 18 años y acepto la Política de Datos (Ley 1581/2012).
+        <input type="checkbox" id="authConsent" /> Soy mayor de 18 años y acepto los <a href="/legal/terminos.html" target="_blank" rel="noopener">Términos</a> y la <a href="/legal/privacidad.html" target="_blank" rel="noopener">Política de Datos</a> (Ley 1581/2012).
       </label>
       <button id="btnPrimary" type="button" class="btn btn-grad" data-act="submitAuth">Iniciar sesión</button>
       <a id="authToggle" data-act="toggleAuthMode" style="display:inline-block;margin-top:12px;color:#ff7a96;cursor:pointer;font-size:.85rem">¿No tienes cuenta? Regístrate</a>
-      <div class="legal">Debes ser mayor de 18 años. Aceptas los <a href="#">Términos</a> y la <a href="#">Política de Datos</a> (Ley 1581/2012).</div>
+      <div class="legal">Debes ser mayor de 18 años. Aceptas los <a href="/legal/terminos.html" target="_blank" rel="noopener">Términos</a> y la <a href="/legal/privacidad.html" target="_blank" rel="noopener">Política de Datos</a> (Ley 1581/2012).</div>
       <button class="btn btn-ghost" type="button" style="margin-top:14px" data-act="go" data-arg="home">← Explorar sin cuenta</button>
     </div>
 
@@ -470,7 +516,22 @@
       <div class="section-h"><h2>Descubre creadoras</h2></div>
       <div class="mgrid" id="mgrid"></div>
       <div class="empty" id="emptyState">😔 Sin resultados para tu búsqueda.</div>
-      <div style="height:14px"></div>
+
+      <!-- ===== Footer legal (requisito de pasarela de pago) ===== -->
+      <footer style="margin-top:26px;padding:20px 4px 10px;border-top:1px solid var(--border);color:var(--muted);font-size:.78rem;line-height:1.9;text-align:center">
+        <div style="font-weight:800;letter-spacing:.04em;color:var(--txt-2)">CamStudio · solo para mayores de 18 años</div>
+        <div style="margin:8px 0">
+          <a href="/legal/terminos.html" target="_blank" rel="noopener">Términos</a> ·
+          <a href="/legal/privacidad.html" target="_blank" rel="noopener">Privacidad</a> ·
+          <a href="/legal/contenido.html" target="_blank" rel="noopener">Normas de contenido</a> ·
+          <a href="/legal/creadoras.html" target="_blank" rel="noopener">Consentimiento 2257</a> ·
+          <a href="/legal/menores.html" target="_blank" rel="noopener">Protección de menores</a> ·
+          <a href="/legal/dmca.html" target="_blank" rel="noopener">DMCA</a> ·
+          <a href="/legal/reembolsos.html" target="_blank" rel="noopener">Reembolsos</a>
+        </div>
+        <div style="opacity:.8">Tolerancia cero contra el contenido con menores o no consentido. Reportes: <a href="mailto:abuso@camstudio.tech">abuso@camstudio.tech</a></div>
+      </footer>
+      <div style="height:86px"></div>
     </div>
 
     <!-- ============ MODEL PROFILE ============ -->
@@ -936,6 +997,6 @@
 <script src="livekit-client.umd.min.js?v=1"></script>
 <script src="crypto.js"></script>
 <script src="api.js?v=19"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>
