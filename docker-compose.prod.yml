@@ -71,11 +71,14 @@ services:
         fi
 
   minio:
-    image: minio/minio:latest
-    # MinIO cerró el acceso público en Docker Hub (exige login) y quay no sirve el
-    # tag de forma anónima. La imagen ya está cacheada en el host, así que evitamos
-    # el re-pull que rompía el deploy: solo se descarga si falta localmente.
-    pull_policy: missing
+    # Se construye desde minio.Dockerfile (FROM minio/minio:latest) en vez de
+    # declararse como imagen a descargar: así Coolify SALTA el pull (que fallaba
+    # porque Docker Hub cerró el acceso público a minio/minio) y reutiliza la
+    # imagen base ya cacheada en el host al construir.
+    build:
+      context: .
+      dockerfile: minio.Dockerfile
+    image: latido-minio:local
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
