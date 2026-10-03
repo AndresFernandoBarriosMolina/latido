@@ -71,10 +71,9 @@ services:
         fi
 
   minio:
-    # Se construye desde minio.Dockerfile (FROM minio/minio:latest) en vez de
-    # declararse como imagen a descargar: así Coolify SALTA el pull (que fallaba
-    # porque Docker Hub cerró el acceso público a minio/minio) y reutiliza la
-    # imagen base ya cacheada en el host al construir.
+    # Se compila desde minio.Dockerfile (binario de MinIO desde el código fuente)
+    # porque MinIO cerró el acceso público a su imagen en Docker Hub/quay/ECR.
+    # Al ser un servicio "build", Coolify no intenta descargar la imagen.
     build:
       context: .
       dockerfile: minio.Dockerfile
@@ -87,7 +86,8 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      # El binario compilado no incluye `mc`; usamos el endpoint nativo de salud.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9000/minio/health/live || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
