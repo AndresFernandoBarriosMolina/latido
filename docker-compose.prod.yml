@@ -72,6 +72,10 @@ services:
 
   minio:
     image: minio/minio:latest
+    # MinIO cerró el acceso público en Docker Hub (exige login) y quay no sirve el
+    # tag de forma anónima. La imagen ya está cacheada en el host, así que evitamos
+    # el re-pull que rompía el deploy: solo se descarga si falta localmente.
+    pull_policy: missing
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
